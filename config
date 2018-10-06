@@ -1,0 +1,16 @@
+[core]
+	symlinks = false
+	autocrlf = true
+	fscache = true
+[color]
+	diff = auto
+	status = auto
+	branch = auto
+	interactive = true
+[pack]
+[help]
+	format = html
+[diff "astextplain"]
+	textconv = astextplain
+[rebase]
+	autosquash = true
