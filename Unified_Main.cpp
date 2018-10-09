@@ -35,12 +35,14 @@ int main( int argc, char **argv)
 	{
 		printf("Unable to open sigma_init.txt file!\n");
 	}
+
 	std::vector<double> Robot_Init_vec = Default_Init(sigma_init);
 	Robot_StateNDot StateNDot_Init_Opt(Robot_Init_vec);
 	std::string input_name = "Initial State Plot at Beginning";
 	Robot_Plot_fn(StateNDot_Init_Opt,input_name);
 	double Init_KE = Kinetic_Energy_fn(StateNDot_Init_Opt);
 	cout<<"-----------------------------------Initial Kinetic Energy: "<<Init_KE<<"-----------------------------------"<<endl;
+
 	// After the robot state initialization, the next job is to conduct the multi-contact staiblization strategy: the root node initialization
 	Tree_Node Root_Node;
 	Node_UpdateNCon(Root_Node, StateNDot_Init_Opt, sigma_init);			// Node_UpdateNCon can only be used when the state and sigma at a given node is known
@@ -55,10 +57,7 @@ int main( int argc, char **argv)
 		*/
 		std::vector<double> Opt_Soln(Variable_Num);
 		Node_i = Pop_Node();
-		// if(Iteration>0)
-		// {
-			Opt_Flag = Nodes_Optimization_fn(Node_i, Node_i, Opt_Soln);
-		// }
+		Opt_Flag = Nodes_Optimization_fn(Node_i, Node_i, Opt_Soln);
 		if(Opt_Flag==1)
 		{
 			// Optimal solution has been found
