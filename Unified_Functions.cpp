@@ -38,11 +38,13 @@ double tau9_max = 60;             			double tau10_max = 50;
 
 
 // actually in the new method to formulate the optimization problem, the acceleration is left unbounded.
-// double Acc_max = 10;
+double Acc_max = 10;
 
 dlib::matrix<double> xlow_vec;							dlib::matrix<double> xupp_vec;
 dlib::matrix<double> ctrl_low_vec;					dlib::matrix<double> ctrl_upp_vec;
 dlib::matrix<double>  Envi_Map;							dlib::matrix<double> Envi_Map_Normal, Envi_Map_Tange; // The Normal and tangential vector of the plane
+
+// double Acc_max = 5;
 
 /**
 * Some global values are defined
@@ -364,22 +366,22 @@ int Default_Init_Pr_(integer    *Status, integer *n,    doublereal x[],
   char       *cu,     integer *lencu,
   integer    iu[],    integer *leniu,
   doublereal ru[],    integer *lenru )
-{
-  std::vector<double> ObjNConstraint_Val,ObjNConstraint_Type;
-  // Initial guess of the robot configurations
-  std::vector<double> Robot_State_Init = StateNDot2StateVec(Structure_P.Node_i.Node_StateNDot);
-  std::vector<double> Robot_State_Opt;
-  for (int i = 0; i < 26; i++)
   {
-    Robot_State_Opt.push_back(x[i]);
+    std::vector<double> ObjNConstraint_Val,ObjNConstraint_Type;
+    // Initial guess of the robot configurations
+    std::vector<double> Robot_State_Init = StateNDot2StateVec(Structure_P.Node_i.Node_StateNDot);
+    std::vector<double> Robot_State_Opt;
+    for (int i = 0; i < 26; i++)
+    {
+      Robot_State_Opt.push_back(x[i]);
+    }
+    Default_Init_Pr_ObjNConstraint(Robot_State_Opt, ObjNConstraint_Val,ObjNConstraint_Type);
+    for (int i = 0; i < ObjNConstraint_Val.size(); i++)
+    {
+      F[i] = ObjNConstraint_Val[i];
+    }
+    return 0;
   }
-  Default_Init_Pr_ObjNConstraint(Robot_State_Opt, ObjNConstraint_Val,ObjNConstraint_Type);
-  for (int i = 0; i < ObjNConstraint_Val.size(); i++)
-  {
-    F[i] = ObjNConstraint_Val[i];
-  }
-  return 0;
-}
 
 void Default_Init_Pr_ObjNConstraint(std::vector<double> &Opt_Seed, std::vector<double> &ObjNConstraint_Val, std::vector<double> &ObjNConstraint_Type)
 {
@@ -1208,7 +1210,7 @@ double Nodes_Optimization_ObjNConstraint(std::vector<double> &Opt_Seed, std::vec
 
   Opt_Seed_Unzip(Opt_Seed, T_tot, StateNDot_Traj, Ctrl_Traj, Contact_Force_Traj, Contact_Force_Mid_Traj);
 
-  T = T_tot/(Grids - 1)*1.0;
+  T = T_tot/(Grids - 1) * 1.0;
 
   Tree_Node Node_i, Node_i_child;							Node_i = Structure_P.Node_i;						Node_i_child = Structure_P.Node_i_child;
 
@@ -1270,6 +1272,33 @@ double Nodes_Optimization_ObjNConstraint(std::vector<double> &Opt_Seed, std::vec
     // Here the constraint on the last part will be taken care of individually
     Matrix_result = Contact_Acc_Constraint(Robostate_Dlib_Front, Robostatedot_Front, Contact_Active_Matrix);
     ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 0);
+
+    // Last is the constraint on the change of state based on the integration of velocity and acceleration bounds
+    for (int ss = 0; ss < 13; ss++)
+    {
+      // This is the bounds on the position change according to the velocity
+      double xdot_max = max(Robostatedot_Front(ss), Robostatedot_Back(ss));
+      double xdot_min = min(Robostatedot_Front(ss), Robostatedot_Back(ss));
+      double Pos_Act_Change = Robostate_Dlib_Back(ss) - Robostate_Dlib_Front(ss);   // The actual change of the position
+      // The change of the
+      ObjNConstraint_Val.push_back(xdot_max*T - Pos_Act_Change);
+      ObjNConstraint_Type.push_back(1);
+      ObjNConstraint_Val.push_back(Pos_Act_Change - xdot_min*T);
+      ObjNConstraint_Type.push_back(1);
+    }
+    // for (int aa = 0; aa < 13; aa++)
+    // {
+    //   // This is the bound on the velocity change according to the acceleration
+    //   double xddot_max = max(Robostatedot_Front(aa + 13), Robostatedot_Back(aa + 13));
+    //   double xddot_min = min(Robostatedot_Front(aa + 13), Robostatedot_Back(aa + 13));
+    //   double Vel_Act_Change = Robostate_Dlib_Back(aa + 13) - Robostate_Dlib_Front(aa + 13);   // The actual change of the position
+    //   // The change of the
+    //   ObjNConstraint_Val.push_back(xddot_max*T - Vel_Act_Change);
+    //   ObjNConstraint_Type.push_back(1);
+    //   ObjNConstraint_Val.push_back(Vel_Act_Change - xddot_min*T);
+    //   ObjNConstraint_Type.push_back(1);
+    // }
+
   }
 
   // 3. Contact manifold constraints on position, velocty and acceleration
@@ -1368,18 +1397,18 @@ double Nodes_Optimization_ObjNConstraint(std::vector<double> &Opt_Seed, std::vec
     End_Effector_PosNVel(Robot_StateNDot_k, End_Effector_Pos, End_Effector_Vel);
     End_Effector_Obs_Dist_Fn(End_Effector_Pos, End_Effector_Dist, End_Effector_Obs);
 
-
+    Matrix_result = End_Effector_Dist;
     ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 1);
 
     for (int j = 0; j < 6; j++)
     {
       End_Effector_Obs_Index_Matrix(j,i) = End_Effector_Obs[j];
     }
-    // // The middle joint can also be considered if possible
-    // temp_matrix = Middle_Joint_Obs_Dist_Fn(Robot_StateNDot_k);
-    // ones_vector(5) = 10;
-    // Matrix_result = temp_matrix - ones_vector * mini;
-    // ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 1);
+    // The middle joint can also be considered if possible
+    temp_matrix = Middle_Joint_Obs_Dist_Fn(Robot_StateNDot_k);
+    ones_vector(5) = 10;
+    Matrix_result = temp_matrix - ones_vector * mini;
+    ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 1);
   }
 
   // Impact mapping constraint
@@ -1464,14 +1493,15 @@ double Nodes_Optimization_ObjNConstraint(std::vector<double> &Opt_Seed, std::vec
     ObjNConstraint_ValNType_Update(Trivial_Acc_Matrix, ObjNConstraint_Val, ObjNConstraint_Type, 0);
 
     // The cost function
+    // double State_Var = Traj_Variation(StateNDot_Traj);
+
     KE_End = Kinetic_Energy_End_Frame(StateNDot_Traj);
     ObjNConstraint_Val[0] = KE_End;
+    // ObjNConstraint_Val[0] = State_Var;
 
     // The desired kinetic energy is less than the threshold
     ObjNConstraint_Val.push_back(KE_ref - KE_End);
     ObjNConstraint_Type.push_back(1);
-
-
   }
   else
   {
@@ -1558,23 +1588,23 @@ dlib::matrix<double> Contact_Acc_Constraint(dlib::matrix<double> &Robotstate, dl
 
 dlib::matrix<double> Diag_Matrix_fn(std::vector<double> &diag_vec)
 {
-	// This function is used to generate a diagonal matrix within diag_vec to its diagonal elements
-	int dim = diag_vec.size();
-	dlib::matrix<double> Diag_Matrix;
-	Diag_Matrix = dlib::zeros_matrix<double>(dim,dim);
-	for (int i = 0; i < dim; i++)
-	{
-		Diag_Matrix(i,i) = diag_vec[i];
-	}
-	return Diag_Matrix;
+  // This function is used to generate a diagonal matrix within diag_vec to its diagonal elements
+  int dim = diag_vec.size();
+  dlib::matrix<double> Diag_Matrix;
+  Diag_Matrix = dlib::zeros_matrix<double>(dim,dim);
+  for (int i = 0; i < dim; i++)
+  {
+    Diag_Matrix(i,i) = diag_vec[i];
+  }
+  return Diag_Matrix;
 }
 
 void Dynamics_Matrices(const Robot_StateNDot &Node_StateNDot, dlib::matrix<double> &D_q, dlib::matrix<double> &B_q, dlib::matrix<double> &C_q_qdot, dlib::matrix<double> &Jac_Full)
 {
-	D_q = D_q_fn(Node_StateNDot);
-	B_q = B_q_fn();
-	C_q_qdot = C_q_qdot_fn(Node_StateNDot);
-	Jac_Full = Jac_Full_fn(Node_StateNDot);
+  D_q = D_q_fn(Node_StateNDot);
+  B_q = B_q_fn();
+  C_q_qdot = C_q_qdot_fn(Node_StateNDot);
+  Jac_Full = Jac_Full_fn(Node_StateNDot);
 }
 
 dlib::matrix<double> State_Ctrl_CF_2_Statedot(dlib::matrix<double> &Robotstate_k, dlib::matrix<double> &Contact_Force_k, dlib::matrix<double> &Control_k)
@@ -1593,7 +1623,7 @@ dlib::matrix<double> State_Ctrl_CF_2_Statedot(dlib::matrix<double> &Robotstate_k
   dlib::matrix<double> qddot = dlib::inv(Dynamics_LHS) * Dynamics_RHS;
 
   // The last step is to give the value back to form the statedot vector
-  dlib::matrix<double> Statedot(26);    // Here 26 is 13 + 13
+  dlib::matrix<double> Statedot = dlib::zeros_matrix<double>(26,1);    // Here 26 is 13 + 13
   for (int i = 0; i < 13; i++)
   {
     Statedot(i) = Robotstate_k(i+13);
@@ -1607,84 +1637,84 @@ dlib::matrix<double> State_Ctrl_CF_2_Statedot(dlib::matrix<double> &Robotstate_k
 
 double Traj_Variation(dlib::matrix<double> &StateNDot_Traj)
 {
-	// This function is used to calcualte the variation of the state trajectory
-	dlib::matrix<double> StateNDot_Traj_Front, StateNDot_Traj_Back, Matrix_result;
-	double Traj_Variation_Val = 0.0;
-	for (int i = 0; i < StateNDot_Traj.nc()-1; i++)
+  // This function is used to calcualte the variation of the state trajectory
+  dlib::matrix<double> StateNDot_Traj_Front, StateNDot_Traj_Back, Matrix_result;
+  double Traj_Variation_Val = 0.0;
+  for (int i = 0; i < StateNDot_Traj.nc()-1; i++)
   {
-		StateNDot_Traj_Front = dlib::colm(StateNDot_Traj, i);
-		StateNDot_Traj_Back = dlib::colm(StateNDot_Traj, i+1);
-		Matrix_result = StateNDot_Traj_Front - StateNDot_Traj_Back;
-		for (int j = 0; j < Matrix_result.nr()/2; j++)
+    StateNDot_Traj_Front = dlib::colm(StateNDot_Traj, i);
+    StateNDot_Traj_Back = dlib::colm(StateNDot_Traj, i+1);
+    Matrix_result = StateNDot_Traj_Front - StateNDot_Traj_Back;
+    for (int j = 0; j < Matrix_result.nr()/2; j++)
     {
-			Traj_Variation_Val = Traj_Variation_Val +  Matrix_result(j) * Matrix_result(j);
-		}
-	}
-	return Traj_Variation_Val;
+      Traj_Variation_Val = Traj_Variation_Val +  Matrix_result(j) * Matrix_result(j);
+    }
+  }
+  return Traj_Variation_Val;
 }
 
 double Kinetic_Energy_End_Frame(dlib::matrix<double> &StateNDot_Traj)
 {
-	dlib::matrix<double> End_Robotstate;
-	End_Robotstate = dlib::colm(StateNDot_Traj, Grids-1);
-	Robot_StateNDot Robot_StateNDot_i = DlibRobotstate2StateNDot(End_Robotstate);
-	double KE_i = Kinetic_Energy_fn(Robot_StateNDot_i);
-	return KE_i;
+  dlib::matrix<double> End_Robotstate;
+  End_Robotstate = dlib::colm(StateNDot_Traj, Grids-1);
+  Robot_StateNDot Robot_StateNDot_i = DlibRobotstate2StateNDot(End_Robotstate);
+  double KE_i = Kinetic_Energy_fn(Robot_StateNDot_i);
+  return KE_i;
 }
 
 double KE_Variation_fn(dlib::matrix<double> &StateNDot_Traj)
 {
   // This function should describe the change of the kinetic energy instead of the sum
   double KE_Variation = 0.0;
-	std::vector<double> KE_tot;
-	dlib::matrix<double> Robostate_Dlib_i;
-	Robot_StateNDot Robot_StateNDot_i;
-	for (int i = 0; i < StateNDot_Traj.nc(); i++)
+  std::vector<double> KE_tot;
+  dlib::matrix<double> Robostate_Dlib_i;
+  Robot_StateNDot Robot_StateNDot_i;
+  for (int i = 0; i < StateNDot_Traj.nc(); i++)
   {
-		Robostate_Dlib_i = dlib::colm(StateNDot_Traj, i);
-		Robot_StateNDot_i = DlibRobotstate2StateNDot(Robostate_Dlib_i);
-		KE_tot.push_back(Kinetic_Energy_fn(Robot_StateNDot_i));
-	}
-	for (int i = 0; i < KE_tot.size()-1; i++)
-	{
-		KE_Variation = KE_Variation + (KE_tot[i+1] - KE_tot[i]) * (KE_tot[i+1] - KE_tot[i]);
-	}
-	return KE_Variation;
+    Robostate_Dlib_i = dlib::colm(StateNDot_Traj, i);
+    Robot_StateNDot_i = DlibRobotstate2StateNDot(Robostate_Dlib_i);
+    KE_tot.push_back(Kinetic_Energy_fn(Robot_StateNDot_i));
+  }
+  for (int i = 0; i < KE_tot.size()-1; i++)
+  {
+    KE_Variation = KE_Variation + (KE_tot[i+1] - KE_tot[i]) * (KE_tot[i+1] - KE_tot[i]);
+  }
+  return KE_Variation;
 }
 
 void Contact_Force_Proj(dlib::matrix<double> &Contact_Force_k, std::vector<double> &Normal_Force_vec, std::vector<double> &Tange_Force_vec, dlib::matrix<int> & End_Effector_Obs_k)
 {
-	// This function is used to project the contact force in to the normal and tangential direction
+  // This function is used to project the contact force in to the normal and tangential direction
   // The default is 6 contact forces
   double Contact_Force_i_x, Contact_Force_i_y, Contact_Force_i_Normal, Contact_Force_i_Tange;
-	for (int j = 0; j < 6; j++)
-	{
-		Contact_Force_i_x = Contact_Force_k(2*j);											Contact_Force_i_y = Contact_Force_k(2*j+1);
+  for (int j = 0; j < 6; j++)
+  {
+    Contact_Force_i_x = Contact_Force_k(2*j);											Contact_Force_i_y = Contact_Force_k(2*j+1);
     Contact_Force_i_Normal = Contact_Force_i_x * Envi_Map_Normal(End_Effector_Obs_k(j),0) + Contact_Force_i_y * Envi_Map_Normal(End_Effector_Obs_k(j),1);
     Contact_Force_i_Tange = Contact_Force_i_x * Envi_Map_Tange(End_Effector_Obs_k(j),0)  + Contact_Force_i_y * Envi_Map_Tange(End_Effector_Obs_k(j),1);
     Normal_Force_vec[j] = Contact_Force_i_Normal;
     Tange_Force_vec[j] = Contact_Force_i_Tange;
-	}
+  }
 }
 
 int Nodes_Optimization_fn(Tree_Node &Node_i, Tree_Node &Node_i_child, std::vector<double> &Opt_Soln_Output)
 {
   // This function will optimize the joint trajectories to minimize the robot kinetic energy while maintaining a smooth transition fashion
-	// However, the constraint will be set to use the direct collocation method
+  // However, the constraint will be set to use the direct collocation method
 
-	int Opt_Flag = 0;                Structure_P.Node_i = Node_i;		Structure_P.Node_i_child = Node_i_child;
+  int Opt_Flag = 0;                Structure_P.Node_i = Node_i;		Structure_P.Node_i_child = Node_i_child;
 
-	double Time_Interval = 0.02;		 int Total_Num = 41;
+  double Time_Interval = 0.02;		 int Total_Num = 41;
 
-	std::vector<double> Time_Queue = Time_Seed_Queue_fn(Time_Interval, Total_Num);       // Here Time_Queue will output the queue of the h_k but the optimization variable is h_k_Tot
+  std::vector<double> Time_Queue = Time_Seed_Queue_fn(Time_Interval, Total_Num);       // Here Time_Queue will output the queue of the h_k but the optimization variable is h_k_Tot
 
-	std::vector<double> Opt_Soln_Tot, State_Variation_Tot;
+  std::vector<double> Opt_Soln_Tot, State_Variation_Tot;
 
-	int Feasible_Num = 0;
+  int Feasible_Num = 0;
 
-	for (int j = 0; j < Time_Queue.size(); j++)
+  for (int j = 0; j < Time_Queue.size(); j++)
   {
-		std::vector<double> Opt_Soln, ObjNConstraint_Val, ObjNConstraint_Type;
+    std::vector<double> Opt_Soln, ObjNConstraint_Val, ObjNConstraint_Type;
 
     h_k = Time_Queue[j];								// I forget what is the meaning of my Time_Seed but I would say that is the duration between two knots
 
@@ -1698,463 +1728,463 @@ int Nodes_Optimization_fn(Tree_Node &Node_i, Tree_Node &Node_i_child, std::vecto
     State_Variation_Tot.push_back(State_Variation);
 
     double ObjNConstraint_Violation_Val = ObjNConstraint_Violation(ObjNConstraint_Val, ObjNConstraint_Type);
-		cout<<endl;
-		cout<<"-----------------------------ObjNConstraint_Violation_Val: "<<ObjNConstraint_Violation_Val<<"-------------------------------"<<endl;
+    cout<<endl;
+    cout<<"-----------------------------ObjNConstraint_Violation_Val: "<<ObjNConstraint_Violation_Val<<"-------------------------------"<<endl;
 
-		if(ObjNConstraint_Violation_Val<0.1)
-		{
-			Opt_Flag = 1;
+    if(ObjNConstraint_Violation_Val<0.1)
+    {
+      Opt_Flag = 1;
 
-			Feasible_Num = Feasible_Num + 1;
+      Feasible_Num = Feasible_Num + 1;
 
-			// However, due to the small constraint violation, the robot may not 100% satisfy the holonomic constraint so here we would like to check the robot final state
-			// Opt_Soln =  Final_State_Opt(Opt_Soln, Node_i, Node_i_child);
+      // However, due to the small constraint violation, the robot may not 100% satisfy the holonomic constraint so here we would like to check the robot final state
+      // Opt_Soln =  Final_State_Opt(Opt_Soln, Node_i, Node_i_child);
 
-			for (int i = 0; i < Opt_Soln.size(); i++)
+      for (int i = 0; i < Opt_Soln.size(); i++)
       {
-				Opt_Soln_Tot.push_back(Opt_Soln[i]);
+        Opt_Soln_Tot.push_back(Opt_Soln[i]);
       }
-				time_t now = time(0);
-				// convert now to string form
-				char* dt = ctime(&now);
+      time_t now = time(0);
+      // convert now to string form
+      char* dt = ctime(&now);
 
-				ofstream output_file;
-				std::string pre_filename = "From_Node_";
-				std::string Node_i_name = to_string(Node_i.Node_Index);
-				std::string mid_filename = "_Expansion_At_Feasible_";
-				std::string Node_i_Child_name = to_string(Feasible_Num);
-				std::string post_filename = ".txt";
+      ofstream output_file;
+      std::string pre_filename = "From_Node_";
+      std::string Node_i_name = to_string(Node_i.Node_Index);
+      std::string mid_filename = "_Expansion_At_Feasible_";
+      std::string Node_i_Child_name = to_string(Feasible_Num);
+      std::string post_filename = ".txt";
 
-				std::string filename = pre_filename + Node_i_name + mid_filename + Node_i_Child_name + dt + post_filename;
-				output_file.open(filename, std::ofstream::out);
-				for (int i = 0; i < Opt_Soln.size(); i++)
-				{
-					output_file<<Opt_Soln[i]<<endl;
-				}
-				output_file.close();
-			}
-			else
-			{
-        // The differentiation between the pure seed guess and the failure guess needs to be conducted
-				// Then this is a failure attempt
-				if(ObjNConstraint_Violation_Val<10)
-				{
-					time_t now = time(0);
-					// convert now to string form
-					char* dt = ctime(&now);
-					ofstream output_file;
-					std::string pre_filename = "From_Node_";
-					std::string Node_i_name = to_string(Node_i.Node_Index);
-					std::string mid_filename = "_Expansion_Quasi_At_";
-					std::string post_filename = ".txt";
+      std::string filename = pre_filename + Node_i_name + mid_filename + Node_i_Child_name + dt + post_filename;
+      output_file.open(filename, std::ofstream::out);
+      for (int i = 0; i < Opt_Soln.size(); i++)
+      {
+        output_file<<Opt_Soln[i]<<endl;
+      }
+      output_file.close();
+    }
+    else
+    {
+      // The differentiation between the pure seed guess and the failure guess needs to be conducted
+      // Then this is a failure attempt
+      if(ObjNConstraint_Violation_Val<10)
+      {
+        time_t now = time(0);
+        // convert now to string form
+        char* dt = ctime(&now);
+        ofstream output_file;
+        std::string pre_filename = "From_Node_";
+        std::string Node_i_name = to_string(Node_i.Node_Index);
+        std::string mid_filename = "_Expansion_Quasi_At_";
+        std::string post_filename = ".txt";
 
-					std::string filename = pre_filename + Node_i_name + mid_filename + dt + post_filename;
-					output_file.open(filename, std::ofstream::out);
-					for (int i = 0; i < Opt_Soln.size(); i++)
-					{
-            output_file<<Opt_Soln[i]<<endl;
-          }
-					output_file.close();
-				}
-			}
-		}
+        std::string filename = pre_filename + Node_i_name + mid_filename + dt + post_filename;
+        output_file.open(filename, std::ofstream::out);
+        for (int i = 0; i < Opt_Soln.size(); i++)
+        {
+          output_file<<Opt_Soln[i]<<endl;
+        }
+        output_file.close();
+      }
+    }
+  }
 
-    // Which means that there exits feasible solutions
+  // Which means that there exits feasible solutions
 
-		if(Opt_Flag == 1)
-		{
-			// Now it is time to select the best one from all feasible solutions. The best solution is the one whose state drift is the minimum
+  if(Opt_Flag == 1)
+  {
+    // Now it is time to select the best one from all feasible solutions. The best solution is the one whose state drift is the minimum
 
-      int Opt_Soln_Index = Minimum_Index(State_Variation_Tot);
+    int Opt_Soln_Index = Minimum_Index(State_Variation_Tot);
 
-			time_t now = time(0);
-			// convert now to string form
-			char* dt = ctime(&now);
+    time_t now = time(0);
+    // convert now to string form
+    char* dt = ctime(&now);
 
-			ofstream output_file;
-			std::string pre_filename = "From_Node_";
-			std::string Node_i_name = to_string(Node_i.Node_Index);
-			std::string mid_filename = "_Expansion_At_";
-			std::string Node_i_Child_name = dt;
-			std::string post_filename = "_Opt_Soln.txt";
+    ofstream output_file;
+    std::string pre_filename = "From_Node_";
+    std::string Node_i_name = to_string(Node_i.Node_Index);
+    std::string mid_filename = "_Expansion_At_";
+    std::string Node_i_Child_name = dt;
+    std::string post_filename = "_Opt_Soln.txt";
 
-			std::string filename = pre_filename + Node_i_name + mid_filename + Node_i_Child_name + post_filename;
+    std::string filename = pre_filename + Node_i_name + mid_filename + Node_i_Child_name + post_filename;
 
-			output_file.open(filename, std::ofstream::out);
+    output_file.open(filename, std::ofstream::out);
 
-      int Opt_Soln_Index_Start = Variable_Num * (Opt_Soln_Index - 1);
+    int Opt_Soln_Index_Start = Variable_Num * (Opt_Soln_Index - 1);
 
 
-			for (int i = 0; i < Variable_Num; i++)
-			{
-				output_file<<Opt_Soln_Tot[i + Opt_Soln_Index_Start]<<endl;
-        Opt_Soln_Output[i] = Opt_Soln_Tot[i + Opt_Soln_Index_Start];
-			}
-			output_file.close();
+    for (int i = 0; i < Variable_Num; i++)
+    {
+      output_file<<Opt_Soln_Tot[i + Opt_Soln_Index_Start]<<endl;
+      Opt_Soln_Output[i] = Opt_Soln_Tot[i + Opt_Soln_Index_Start];
+    }
+    output_file.close();
 
-	}
-	return Opt_Flag;
+  }
+  return Opt_Flag;
 }
 
 std::vector<double> Nodes_Optimization_Inner_Opt(Tree_Node &Node_i, Tree_Node &Node_i_child)
 {
-	std::vector<double> Opt_Seed = Seed_Guess_Gene(Node_i, Node_i_child);
+  std::vector<double> Opt_Seed = Seed_Guess_Gene(Node_i, Node_i_child);
 
-	std::vector<double> ObjNConstraint_Val, ObjNConstraint_Type;
+  std::vector<double> ObjNConstraint_Val, ObjNConstraint_Type;
 
-	Nodes_Optimization_ObjNConstraint(Opt_Seed, ObjNConstraint_Val, ObjNConstraint_Type);
+  Nodes_Optimization_ObjNConstraint(Opt_Seed, ObjNConstraint_Val, ObjNConstraint_Type);
 
-	snoptProblem Nodes_Optimization_Pr;                     // This is the name of the Optimization problem for the robot configuration
+  snoptProblem Nodes_Optimization_Pr;                     // This is the name of the Optimization problem for the robot configuration
 
-	integer n = Opt_Seed.size();
-	integer neF = ObjNConstraint_Val.size();
-	integer lenA  =  n * neF;
+  integer n = Opt_Seed.size();
+  integer neF = ObjNConstraint_Val.size();
+  integer lenA  =  n * neF;
 
-	Structure_P.Opt_Val_No = Opt_Seed.size();			     Structure_P.ObjNConst_No = ObjNConstraint_Val.size();
+  Structure_P.Opt_Val_No = Opt_Seed.size();			     Structure_P.ObjNConst_No = ObjNConstraint_Val.size();
 
-	integer *iAfun = new integer[lenA];              	  integer *jAvar = new integer[lenA];					   doublereal *A  = new doublereal[lenA];
-	integer lenG   = lenA;								              integer *iGfun = new integer[lenG];					   integer *jGvar = new integer[lenG];
-	doublereal *x      = new doublereal[n];				      doublereal *xlow   = new doublereal[n];				 doublereal *xupp   = new doublereal[n];
-	doublereal *xmul   = new doublereal[n];				      integer    *xstate = new    integer[n];
+  integer *iAfun = new integer[lenA];              	  integer *jAvar = new integer[lenA];					   doublereal *A  = new doublereal[lenA];
+  integer lenG   = lenA;								              integer *iGfun = new integer[lenG];					   integer *jGvar = new integer[lenG];
+  doublereal *x      = new doublereal[n];				      doublereal *xlow   = new doublereal[n];				 doublereal *xupp   = new doublereal[n];
+  doublereal *xmul   = new doublereal[n];				      integer    *xstate = new    integer[n];
 
-	doublereal *F      = new doublereal[neF];			      doublereal *Flow   = new doublereal[neF];			 doublereal *Fupp   = new doublereal[neF];
-	doublereal *Fmul   = new doublereal[neF];			      integer    *Fstate = new integer[neF];
+  doublereal *F      = new doublereal[neF];			      doublereal *Flow   = new doublereal[neF];			 doublereal *Fupp   = new doublereal[neF];
+  doublereal *Fmul   = new doublereal[neF];			      integer    *Fstate = new integer[neF];
 
-	integer nxnames = 1;								                integer nFnames = 1;					char *xnames = new char[nxnames*8];					char *Fnames = new char[nFnames*8];
-	integer    ObjRow = 0;								              doublereal ObjAdd = 0;
+  integer nxnames = 1;								                integer nFnames = 1;					char *xnames = new char[nxnames*8];					char *Fnames = new char[nFnames*8];
+  integer    ObjRow = 0;								              doublereal ObjAdd = 0;
 
-	for (int i = 0; i < n; i++)
+  for (int i = 0; i < n; i++)
   {
-		xlow[i] =-Inf;
-		xupp[i] = Inf;
-	}
+    xlow[i] =-Inf;
+    xupp[i] = Inf;
+  }
 
-	xlow[0] = 0.25;		xupp[0] = 3.5;        // The first value is the time
+  xlow[0] = 0.25;		xupp[0] = 3.5;        // The first value is the time
 
   int Index_Count = 1;
 
-	for (int i = 0; i < Grids; i++)
+  for (int i = 0; i < Grids; i++)
   {
-		for (int j = 0; j < 26; j++)
+    for (int j = 0; j < 26; j++)
     {
-			xlow[Index_Count] = xlow_vec(j);
-			xupp[Index_Count] = xupp_vec(j);
-			Index_Count = Index_Count + 1;
+      xlow[Index_Count] = xlow_vec(j);
+      xupp[Index_Count] = xupp_vec(j);
+      Index_Count = Index_Count + 1;
     }
   }
 
-	for (int i = 0; i < Grids; i++)
+  for (int i = 0; i < Grids; i++)
   {
-		for (int j = 0; j < 10; j++)
+    for (int j = 0; j < 10; j++)
     {
-			xlow[Index_Count] = ctrl_low_vec(j);
-			xupp[Index_Count] = ctrl_upp_vec(j);
-			Index_Count = Index_Count + 1;
+      xlow[Index_Count] = ctrl_low_vec(j);
+      xupp[Index_Count] = ctrl_upp_vec(j);
+      Index_Count = Index_Count + 1;
     }
   }
 
-	for (int i = 0; i < n; i++)
+  for (int i = 0; i < n; i++)
   {
-		xstate[i] = 0.0;
-		x[i] = Opt_Seed[i];  	// Initial guess
-	}
+    xstate[i] = 0.0;
+    x[i] = Opt_Seed[i];  	// Initial guess
+  }
 
-	for(int i = 0; i<neF; i++)
-	{
-		if (ObjNConstraint_Type[i]>1.0)
-		{
+  for(int i = 0; i<neF; i++)
+  {
+    if (ObjNConstraint_Type[i]>1.0)
+    {
       // This seems like a constraint on the acceleration. However, I would say curently the compact version is not to consider the qddot
-			Flow[i] = -10.0;
-			Fupp[i] = 10.0;
-		}
-		else
-		{
-			Flow[i] = 0.0;
-			if(ObjNConstraint_Type[i]>0.0)
-			{
-				Fupp[i] = Inf;
-			}
-			else
-			{
-				Fupp[i] = 0.0;
-			}
-		}
-	}
+      Flow[i] = -Acc_max;
+      Fupp[i] = Acc_max;
+    }
+    else
+    {
+      Flow[i] = 0.0;
+      if(ObjNConstraint_Type[i]>0.0)
+      {
+        Fupp[i] = Inf;
+      }
+      else
+      {
+        Fupp[i] = 0.0;
+      }
+    }
+  }
 
-	// Here the linear initial condition matching is conducted as bounds
-	std::vector<double> Init_Config = StateNDot2StateVec(Node_i.Node_StateNDot);
+  // Here the linear initial condition matching is conducted as bounds
+  std::vector<double> Init_Config = StateNDot2StateVec(Node_i.Node_StateNDot);
 
-	for (int i = 0; i < 26; i++)
-	{
-		Flow[i+1] = Init_Config[i];
-		Fupp[i+1] = Init_Config[i];
-	}
+  for (int i = 0; i < 26; i++)
+  {
+    Flow[i+1] = Init_Config[i];
+    Fupp[i+1] = Init_Config[i];
+  }
 
-	// Load the data for ToyProb ...
-	Nodes_Optimization_Pr.setPrintFile  ( "Nodes_Optimization_Pr.out" );
-	Nodes_Optimization_Pr.setProblemSize( n, neF );
-	Nodes_Optimization_Pr.setObjective  ( ObjRow, ObjAdd );
-	Nodes_Optimization_Pr.setA          ( lenA, iAfun, jAvar, A );
-	Nodes_Optimization_Pr.setG          ( lenG, iGfun, jGvar );
-	Nodes_Optimization_Pr.setX          ( x, xlow, xupp, xmul, xstate );
-	Nodes_Optimization_Pr.setF          ( F, Flow, Fupp, Fmul, Fstate );
-	Nodes_Optimization_Pr.setXNames     ( xnames, nxnames );
-	Nodes_Optimization_Pr.setFNames     ( Fnames, nFnames );
-	Nodes_Optimization_Pr.setProbName   ( "Nodes_Optimization_Pr" );
-	Nodes_Optimization_Pr.setUserFun    ( Nodes_Optimization_Pr_fn);
-	// snopta will compute the Jacobian by finite-differences.
-	// The user has the option of calling  snJac  to define the
-	// coordinate arrays (iAfun,jAvar,A) and (iGfun, jGvar).
-	Nodes_Optimization_Pr.computeJac    ();
-	Nodes_Optimization_Pr.setIntParameter( "Derivative option", 0 );
-	Nodes_Optimization_Pr.setIntParameter("Major iterations limit", 250);
-	Nodes_Optimization_Pr.setIntParameter("Minor iterations limit", 50000);
-	Nodes_Optimization_Pr.setIntParameter("Iterations limit", 2000000);
-	Nodes_Optimization_Pr.setIntParameter("Minor print level", 1);
-	// Nodes_Optimization_Pr.setSpecsFile   ( ".\Nodes_Optimization_Pr.spc" );
+  // Load the data for ToyProb ...
+  Nodes_Optimization_Pr.setPrintFile  ( "Nodes_Optimization_Pr.out" );
+  Nodes_Optimization_Pr.setProblemSize( n, neF );
+  Nodes_Optimization_Pr.setObjective  ( ObjRow, ObjAdd );
+  Nodes_Optimization_Pr.setA          ( lenA, iAfun, jAvar, A );
+  Nodes_Optimization_Pr.setG          ( lenG, iGfun, jGvar );
+  Nodes_Optimization_Pr.setX          ( x, xlow, xupp, xmul, xstate );
+  Nodes_Optimization_Pr.setF          ( F, Flow, Fupp, Fmul, Fstate );
+  Nodes_Optimization_Pr.setXNames     ( xnames, nxnames );
+  Nodes_Optimization_Pr.setFNames     ( Fnames, nFnames );
+  Nodes_Optimization_Pr.setProbName   ( "Nodes_Optimization_Pr" );
+  Nodes_Optimization_Pr.setUserFun    ( Nodes_Optimization_Pr_fn);
+  // snopta will compute the Jacobian by finite-differences.
+  // The user has the option of calling  snJac  to define the
+  // coordinate arrays (iAfun,jAvar,A) and (iGfun, jGvar).
+  Nodes_Optimization_Pr.computeJac    ();
+  Nodes_Optimization_Pr.setIntParameter( "Derivative option", 0 );
+  Nodes_Optimization_Pr.setIntParameter("Major iterations limit", 250);
+  Nodes_Optimization_Pr.setIntParameter("Minor iterations limit", 50000);
+  Nodes_Optimization_Pr.setIntParameter("Iterations limit", 2000000);
+  Nodes_Optimization_Pr.setIntParameter("Minor print level", 1);
+  // Nodes_Optimization_Pr.setSpecsFile   ( ".\Nodes_Optimization_Pr.spc" );
 
-	// string QPsolver_opt = "QN";
-	// Nodes_Optimization_Pr.setRealParameter("QPsolver", QPsolver_opt);
+  // string QPsolver_opt = "QN";
+  // Nodes_Optimization_Pr.setRealParameter("QPsolver", QPsolver_opt);
 
 
-	integer Cold = 0, Basis = 1, Warm = 2;
-	Nodes_Optimization_Pr.solve( Cold );
+  integer Cold = 0, Basis = 1, Warm = 2;
+  Nodes_Optimization_Pr.solve( Cold );
 
-	std::vector<double> Opt_Soln;
+  std::vector<double> Opt_Soln;
 
-	for (int i = 0; i < n; i++)
-	{
-		Opt_Soln.push_back(x[i]);
-	}
-	delete []iAfun;  delete []jAvar;  delete []A;
-	delete []iGfun;  delete []jGvar;
+  for (int i = 0; i < n; i++)
+  {
+    Opt_Soln.push_back(x[i]);
+  }
+  delete []iAfun;  delete []jAvar;  delete []A;
+  delete []iGfun;  delete []jGvar;
 
-	delete []x;      delete []xlow;   delete []xupp;
-	delete []xmul;   delete []xstate;
+  delete []x;      delete []xlow;   delete []xupp;
+  delete []xmul;   delete []xstate;
 
-	delete []F;      delete []Flow;   delete []Fupp;
-	delete []Fmul;   delete []Fstate;
+  delete []F;      delete []Flow;   delete []Fupp;
+  delete []Fmul;   delete []Fstate;
 
-	delete []xnames; delete []Fnames;
+  delete []xnames; delete []Fnames;
 
-	return Opt_Soln;
+  return Opt_Soln;
 }
 
 int Nodes_Optimization_Pr_fn(integer    *Status, integer *n,    doublereal x[],
-	     integer    *needF,  integer *neF,  doublereal F[],
-	     integer    *needG,  integer *neG,  doublereal G[],
-	     char       *cu,     integer *lencu,
-		 integer    iu[],    integer *leniu,
-		 doublereal ru[],    integer *lenru )
+     integer    *needF,  integer *neF,  doublereal F[],
+     integer    *needG,  integer *neG,  doublereal G[],
+     char       *cu,     integer *lencu,
+	 integer    iu[],    integer *leniu,
+	 doublereal ru[],    integer *lenru )
 {
   std::vector<double> Opt_Seed, ObjNConstraint_Val, ObjNConstraint_Type;
-	const int Opt_Val_No = Structure_P.Opt_Val_No ;
+  const int Opt_Val_No = Structure_P.Opt_Val_No ;
   const int ObjNConst_No = Structure_P.ObjNConst_No;
-	for (int i = 0; i < Opt_Val_No; i++)
-	{
-		Opt_Seed.push_back(x[i]);
-	}
-	Nodes_Optimization_ObjNConstraint(Opt_Seed, ObjNConstraint_Val, ObjNConstraint_Type);
-	for (int i = 0; i < ObjNConst_No; i++)
-	{
-		F[i] = ObjNConstraint_Val[i];
-	}
-	return 0;
+  for (int i = 0; i < Opt_Val_No; i++)
+  {
+    Opt_Seed.push_back(x[i]);
+  }
+  Nodes_Optimization_ObjNConstraint(Opt_Seed, ObjNConstraint_Val, ObjNConstraint_Type);
+  for (int i = 0; i < ObjNConst_No; i++)
+  {
+    F[i] = ObjNConstraint_Val[i];
+  }
+  return 0;
 }
 
 double ObjNConstraint_Violation(const std::vector<double> &ObjNConstraint_Val, const std::vector<double> &ObjNConstraint_Type)
 {
-	double ObjNConstraint_Violation_Val = 0.0;
+  double ObjNConstraint_Violation_Val = 0.0;
 
-	for (int i = 0; i < ObjNConstraint_Val.size(); i++)
-	{
-		if(ObjNConstraint_Type[i]==0)
-		{
-			if(abs(ObjNConstraint_Val[i])>ObjNConstraint_Violation_Val)
-			{
-				ObjNConstraint_Violation_Val = abs(ObjNConstraint_Val[i]);
-			}
-		}
-	}
-	return ObjNConstraint_Violation_Val;
+  for (int i = 0; i < ObjNConstraint_Val.size(); i++)
+  {
+    if(ObjNConstraint_Type[i]==0)
+    {
+      if(abs(ObjNConstraint_Val[i])>ObjNConstraint_Violation_Val)
+      {
+        ObjNConstraint_Violation_Val = abs(ObjNConstraint_Val[i]);
+      }
+    }
+  }
+  return ObjNConstraint_Violation_Val;
 }
 
 void Opt_Soln_Write2Txt(Tree_Node &Node_i,Tree_Node &Node_i_child, std::vector<double> &Opt_Soln)
 {
-	ofstream output_file;
-	std::string pre_filename = "From_Node_";
-	std::string Node_i_name = to_string(Node_i.Node_Index);
-	std::string mid_filename = "_To_Node_";
-	std::string Node_i_Child_name = to_string(Node_i_child.Node_Index);
-	std::string post_filename = "_Opt_Soln.txt";
-	std::string filename = pre_filename + Node_i_name + mid_filename + Node_i_Child_name + post_filename;
-	output_file.open(filename, std::ofstream::out);
-	for (int i = 0; i < Opt_Soln.size(); i++)
-	{
-		output_file<<Opt_Soln[i]<<endl;
-	}
-	output_file.close();
+  ofstream output_file;
+  std::string pre_filename = "From_Node_";
+  std::string Node_i_name = to_string(Node_i.Node_Index);
+  std::string mid_filename = "_To_Node_";
+  std::string Node_i_Child_name = to_string(Node_i_child.Node_Index);
+  std::string post_filename = "_Opt_Soln.txt";
+  std::string filename = pre_filename + Node_i_name + mid_filename + Node_i_Child_name + post_filename;
+  output_file.open(filename, std::ofstream::out);
+  for (int i = 0; i < Opt_Soln.size(); i++)
+  {
+    output_file<<Opt_Soln[i]<<endl;
+  }
+  output_file.close();
 }
 
 dlib::matrix<double> Node_Expansion_fn(const Tree_Node &Node_i, int &Adjacent_Number)
 {
-	// Checked! Oct.4th.2018 9:46PM
-	// This function is used to conduct the node expansion for a given parent node
-	// The basic consideration is not to have the flying-in-air phase
+  // Checked! Oct.4th.2018 9:46PM
+  // This function is used to conduct the node expansion for a given parent node
+  // The basic consideration is not to have the flying-in-air phase
 
-	std::vector<double> sigma_i = Node_i.sigma;
-	dlib::matrix<double> Nodes_Sigma_Matrix;
-	Nodes_Sigma_Matrix = dlib::zeros_matrix<double>(4,4);
-	double sigma_sum;
-	Adjacent_Number = 0;
-	for (int i = 0; i < 4; i++)
-	{
-		std::vector<double> sigma_t = sigma_i;
-		sigma_t[i] = !sigma_t[i];
-		sigma_sum = sigma_t[0] + sigma_t[1] + sigma_t[2] + sigma_t[3];
-		if(sigma_sum==0)
-		{
-			continue;
-		}
-		else
-		{
-			Nodes_Sigma_Matrix(Adjacent_Number, 0) = sigma_t[0];
-			Nodes_Sigma_Matrix(Adjacent_Number, 1) = sigma_t[1];
-			Nodes_Sigma_Matrix(Adjacent_Number, 2) = sigma_t[2];
-			Nodes_Sigma_Matrix(Adjacent_Number, 3) = sigma_t[3];
-			Adjacent_Number = Adjacent_Number + 1;
-		}
-	}
-	// cout<<Nodes_Sigma_Matrix<<endl;
-	return Nodes_Sigma_Matrix;
+  std::vector<double> sigma_i = Node_i.sigma;
+  dlib::matrix<double> Nodes_Sigma_Matrix;
+  Nodes_Sigma_Matrix = dlib::zeros_matrix<double>(4,4);
+  double sigma_sum;
+  Adjacent_Number = 0;
+  for (int i = 0; i < 4; i++)
+  {
+    std::vector<double> sigma_t = sigma_i;
+    sigma_t[i] = !sigma_t[i];
+    sigma_sum = sigma_t[0] + sigma_t[1] + sigma_t[2] + sigma_t[3];
+    if(sigma_sum==0)
+    {
+      continue;
+    }
+    else
+    {
+      Nodes_Sigma_Matrix(Adjacent_Number, 0) = sigma_t[0];
+      Nodes_Sigma_Matrix(Adjacent_Number, 1) = sigma_t[1];
+      Nodes_Sigma_Matrix(Adjacent_Number, 2) = sigma_t[2];
+      Nodes_Sigma_Matrix(Adjacent_Number, 3) = sigma_t[3];
+      Adjacent_Number = Adjacent_Number + 1;
+    }
+  }
+  // cout<<Nodes_Sigma_Matrix<<endl;
+  return Nodes_Sigma_Matrix;
 }
 
 std::vector<double> End_RobotNDot_Extract(std::vector<double> &Opt_Soln, std::vector<double> &sigma_i, std::vector<double>&sigma_i_child)
 {
-	// This function is used to extract the end robot state out from the Opt_Soln while conducting Impact Mapping if there exists
-	double T_tot;
-	dlib::matrix<double> StateNDot_Traj, Ctrl_Traj, Contact_Force_Traj, Contact_Force_Mid_Traj;
-	Opt_Seed_Unzip(Opt_Soln, T_tot, StateNDot_Traj, Ctrl_Traj, Contact_Force_Traj, Contact_Force_Mid_Traj);
+  // This function is used to extract the end robot state out from the Opt_Soln while conducting Impact Mapping if there exists
+  double T_tot;
+  dlib::matrix<double> StateNDot_Traj, Ctrl_Traj, Contact_Force_Traj, Contact_Force_Mid_Traj;
+  Opt_Seed_Unzip(Opt_Soln, T_tot, StateNDot_Traj, Ctrl_Traj, Contact_Force_Traj, Contact_Force_Mid_Traj);
   int Opt_Type_Flag = Sigma_TransNGoal(sigma_i, sigma_i_child);
 
-	std::vector<double> Robotstate_vec;
-	if(Opt_Type_Flag ==1)
-	{
-		// In this case, there is impact mapping needed to be conducted
-		Robot_StateNDot Robot_End_State;
-		double Impulse_Mag;
-		Robot_End_State = Impact_Mapping_fn(StateNDot_Traj, Impulse_Mag, sigma_i_child);
-		Robotstate_vec = StateNDot2StateVec(Robot_End_State);
-	}
-	else
-	{
-		dlib::matrix<double> End_RobotstateDlib;
-		End_RobotstateDlib = dlib::colm(StateNDot_Traj, Grids-1);
-		for (int i = 0; i < End_RobotstateDlib.nr(); i++)
+  std::vector<double> Robotstate_vec;
+  if(Opt_Type_Flag ==1)
+  {
+    // In this case, there is impact mapping needed to be conducted
+    Robot_StateNDot Robot_End_State;
+    double Impulse_Mag;
+    Robot_End_State = Impact_Mapping_fn(StateNDot_Traj, Impulse_Mag, sigma_i_child);
+    Robotstate_vec = StateNDot2StateVec(Robot_End_State);
+  }
+  else
+  {
+    dlib::matrix<double> End_RobotstateDlib;
+    End_RobotstateDlib = dlib::colm(StateNDot_Traj, Grids-1);
+    for (int i = 0; i < End_RobotstateDlib.nr(); i++)
     {
-			Robotstate_vec.push_back(End_RobotstateDlib(i));
+      Robotstate_vec.push_back(End_RobotstateDlib(i));
     }
-	}
-	return Robotstate_vec;
+  }
+  return Robotstate_vec;
 }
 
 Robot_StateNDot Impact_Mapping_fn(dlib::matrix<double> &End_State_Dlib, double &Impulse_Mag, std::vector<double> &sigma_i_child)
 {
   // Since the impact mapping only happens at the end of the state so there is no need to take in all the state trajectories into consideration
-	Robot_StateNDot End_StateNDot = DlibRobotstate2StateNDot(End_State_Dlib);
-	std::vector<double> End_Statevec = StateNDot2StateVec(End_StateNDot);
-	dlib::matrix<double> D_q, B_q, C_q_qdot, Jac_Full;
-	Dynamics_Matrices(End_StateNDot, D_q, B_q, C_q_qdot, Jac_Full);
+  Robot_StateNDot End_StateNDot = DlibRobotstate2StateNDot(End_State_Dlib);
+  std::vector<double> End_Statevec = StateNDot2StateVec(End_StateNDot);
+  dlib::matrix<double> D_q, B_q, C_q_qdot, Jac_Full;
+  Dynamics_Matrices(End_StateNDot, D_q, B_q, C_q_qdot, Jac_Full);
 
-	// Here sigma_i_child is used to select the full row rank Jacobian matrix
-	std::vector<double> Jac_Act_Index = Full_Row_Rank_Index(sigma_i_child);
-	const int Jac_Row_Number = Jac_Act_Index.size();
-	dlib::matrix<double> Jac_Act;					Jac_Act = dlib::zeros_matrix<double>(Jac_Row_Number,13);
-	for (int j = 0; j < Jac_Row_Number; j++)
+  // Here sigma_i_child is used to select the full row rank Jacobian matrix
+  std::vector<double> Jac_Act_Index = Full_Row_Rank_Index(sigma_i_child);
+  const int Jac_Row_Number = Jac_Act_Index.size();
+  dlib::matrix<double> Jac_Act;					Jac_Act = dlib::zeros_matrix<double>(Jac_Row_Number,13);
+  for (int j = 0; j < Jac_Row_Number; j++)
   {
-		for (int k = 0; k < 13; k++)
+    for (int k = 0; k < 13; k++)
     {
-			Jac_Act(j,k) = Jac_Full(Jac_Act_Index[j],k);
-		}
-	}
-	dlib::matrix<double> Jac_Act_Trans = dlib::trans(Jac_Act);
-	dlib::matrix<double> D_q_Inv = dlib::inv(D_q);
-	dlib::matrix<double> Pre_Impact_Vel, Post_Impact_Vel;
-	Pre_Impact_Vel = dlib::zeros_matrix<double>(13,1);
-	Post_Impact_Vel = Pre_Impact_Vel;
-	for (int i = 0; i < 13; i++)
-	{
-		Pre_Impact_Vel(i) = End_Statevec[i+13];
-	}
-	dlib::matrix<double> Impulse_Lamda;
-	// cout<<D_q<<endl;			cout<<B_q<<endl;			cout<<C_q_qdot<<endl;			cout<<Jac_Act<<endl;
-	Impulse_Lamda = -dlib::pinv(Jac_Act * D_q_Inv * Jac_Act_Trans) * Jac_Act * Pre_Impact_Vel;
-	// cout<<Impulse_Lamda<<endl;
-	Post_Impact_Vel = D_q_Inv * Jac_Act_Trans * Impulse_Lamda + Pre_Impact_Vel;
-	// cout<<Post_Impact_Vel<<endl;
-	std::vector<double> Robotstate_End(26);
-	for (int i = 0; i < 13; i++)
+      Jac_Act(j,k) = Jac_Full(Jac_Act_Index[j],k);
+    }
+  }
+  dlib::matrix<double> Jac_Act_Trans = dlib::trans(Jac_Act);
+  dlib::matrix<double> D_q_Inv = dlib::inv(D_q);
+  dlib::matrix<double> Pre_Impact_Vel, Post_Impact_Vel;
+  Pre_Impact_Vel = dlib::zeros_matrix<double>(13,1);
+  Post_Impact_Vel = Pre_Impact_Vel;
+  for (int i = 0; i < 13; i++)
   {
-		Robotstate_End[i] = End_Statevec[i];
-		Robotstate_End[i+13] = Post_Impact_Vel(i);
-	}
-	Robot_StateNDot Robot_StateNDot_End;
-	Robot_StateNDot_End = StateVec2StateNDot(Robotstate_End);
+    Pre_Impact_Vel(i) = End_Statevec[i+13];
+  }
+  dlib::matrix<double> Impulse_Lamda;
+  // cout<<D_q<<endl;			cout<<B_q<<endl;			cout<<C_q_qdot<<endl;			cout<<Jac_Act<<endl;
+  Impulse_Lamda = -dlib::pinv(Jac_Act * D_q_Inv * Jac_Act_Trans) * Jac_Act * Pre_Impact_Vel;
+  // cout<<Impulse_Lamda<<endl;
+  Post_Impact_Vel = D_q_Inv * Jac_Act_Trans * Impulse_Lamda + Pre_Impact_Vel;
+  // cout<<Post_Impact_Vel<<endl;
+  std::vector<double> Robotstate_End(26);
+  for (int i = 0; i < 13; i++)
+  {
+    Robotstate_End[i] = End_Statevec[i];
+    Robotstate_End[i+13] = Post_Impact_Vel(i);
+  }
+  Robot_StateNDot Robot_StateNDot_End;
+  Robot_StateNDot_End = StateVec2StateNDot(Robotstate_End);
 
-	Impulse_Mag = 0.0;
-	for (int i = 0; i < Impulse_Lamda.nr(); i++)
+  Impulse_Mag = 0.0;
+  for (int i = 0; i < Impulse_Lamda.nr(); i++)
   {
-		Impulse_Mag = Impulse_Mag + Impulse_Lamda(i) * Impulse_Lamda(i);
-	}
-	return Robot_StateNDot_End;
+    Impulse_Mag = Impulse_Mag + Impulse_Lamda(i) * Impulse_Lamda(i);
+  }
+  return Robot_StateNDot_End;
 }
 
 std::vector<double> Full_Row_Rank_Index(std::vector<double> &sigma_i_child)
 {
   // This function is used select the full row rank matrix out from the Full jacobian matrix
-	std::vector<double> Row_Rank_Index_Vec;
-	if(sigma_i_child[0]==1)
-	{
-		Row_Rank_Index_Vec.push_back(0);
-		Row_Rank_Index_Vec.push_back(1);
-		Row_Rank_Index_Vec.push_back(3);
-	}
-	if(sigma_i_child[1]==1)
-	{
-		Row_Rank_Index_Vec.push_back(4);
-		Row_Rank_Index_Vec.push_back(5);
-		Row_Rank_Index_Vec.push_back(7);
-	}
-	if(sigma_i_child[2]==1)
-	{
-		Row_Rank_Index_Vec.push_back(8);
-		Row_Rank_Index_Vec.push_back(9);
-	}
-	if(sigma_i_child[3]==1)
-	{
-		Row_Rank_Index_Vec.push_back(10);
-		Row_Rank_Index_Vec.push_back(11);
-	}
-	return Row_Rank_Index_Vec;
+  std::vector<double> Row_Rank_Index_Vec;
+  if(sigma_i_child[0]==1)
+  {
+    Row_Rank_Index_Vec.push_back(0);
+    Row_Rank_Index_Vec.push_back(1);
+    Row_Rank_Index_Vec.push_back(3);
+  }
+  if(sigma_i_child[1]==1)
+  {
+    Row_Rank_Index_Vec.push_back(4);
+    Row_Rank_Index_Vec.push_back(5);
+    Row_Rank_Index_Vec.push_back(7);
+  }
+  if(sigma_i_child[2]==1)
+  {
+    Row_Rank_Index_Vec.push_back(8);
+    Row_Rank_Index_Vec.push_back(9);
+  }
+  if(sigma_i_child[3]==1)
+  {
+    Row_Rank_Index_Vec.push_back(10);
+    Row_Rank_Index_Vec.push_back(11);
+  }
+  return Row_Rank_Index_Vec;
 }
 
 std::vector<double> Opt_Soln_Load()
 {
-	// This function is used to load the computed optimal solution for data analysis
-	std::vector<double> Opt_Seed;
-	ifstream Opt_Soln_File;              // This is to read the initial angle and angular velocities
-	Opt_Soln_File.open("4.txt");
-	if(Opt_Soln_File.is_open())
-	{
-		double data_each_line = 0.0;
+  // This function is used to load the computed optimal solution for data analysis
+  std::vector<double> Opt_Seed;
+  ifstream Opt_Soln_File;              // This is to read the initial angle and angular velocities
+  Opt_Soln_File.open("4.txt");
+  if(Opt_Soln_File.is_open())
+  {
+    double data_each_line = 0.0;
 
-		while(Opt_Soln_File>>data_each_line)
-		{
-			Opt_Seed.push_back(data_each_line);
-		}
-		Opt_Soln_File.close();
-	}
-	return Opt_Seed;
+    while(Opt_Soln_File>>data_each_line)
+    {
+      Opt_Seed.push_back(data_each_line);
+    }
+    Opt_Soln_File.close();
+  }
+  return Opt_Seed;
 }
 
 std::vector<double> Seed_Guess_Gene(Tree_Node &Node_i, Tree_Node &Node_i_child)
@@ -2189,9 +2219,9 @@ std::vector<double> Seed_Guess_Gene(Tree_Node &Node_i, Tree_Node &Node_i_child)
 
   // No matter what method is chosen, the output from this step are four things: States/Accelerations at grids and States/Accelerations at mid-points
 
-  State_Traj_Interpolater(Init_Config, Seed_Config, StateNDot_Traj, Acc_Traj, StateNdot_Mid_Traj, Acc_Mid_Traj,1);
+  // State_Traj_Interpolater(Init_Config, Seed_Config, StateNDot_Traj, Acc_Traj, StateNdot_Mid_Traj, Acc_Mid_Traj,1);
   // State_Traj_Interpolater(Init_Config, Seed_Config, StateNDot_Traj, Acc_Traj, StateNdot_Mid_Traj, Acc_Mid_Traj,2);
-  // State_Traj_Interpolater(Init_Config, Seed_Config, StateNDot_Traj, Acc_Traj, StateNdot_Mid_Traj, Acc_Mid_Traj,3);
+  State_Traj_Interpolater(Init_Config, Seed_Config, StateNDot_Traj, Acc_Traj, StateNdot_Mid_Traj, Acc_Mid_Traj,3);
 
   // Second is to initialize: Control, Contact Force and Contact_Force_Mid
   // Since the acceleration is directly given in advance. This makes the initialization easier.
@@ -2409,7 +2439,6 @@ void State_Traj_Interpolater(std::vector<double>&Init_Robotstate, std::vector<do
             StateNdot_Mid_Traj(i, j+13) = QuadraticSpline_Eval(T_tot, State_Traj_Coeff_i, s_j_mid, 'V');
 
             Acc_Mid_Traj(i, j) = QuadraticSpline_Eval(T_tot, State_Traj_Coeff_i, s_j_mid, 'A');
-
           }
         }
       }
@@ -2490,510 +2519,515 @@ void CubicSpline_Interpolater(dlib::matrix<double> &StateNDot_Traj, dlib::matrix
 
 void Opt_Seed_Unzip(std::vector<double> &Opt_Seed, double &T_tot, dlib::matrix<double> & StateNDot_Traj, dlib::matrix<double> & Ctrl_Traj, dlib::matrix<double> & Contact_Force_Traj, dlib::matrix<double> & Contact_Force_Mid_Traj)
 {
-	const int NumOfStateNDot_Traj = 26;
-	const int NumOfCtrl_Traj = 10;
-	const int NumOfContactForce_Traj = 12;
+  const int NumOfStateNDot_Traj = 26;
+  const int NumOfCtrl_Traj = 10;
+  const int NumOfContactForce_Traj = 12;
   const int NumOfContactForceMid_Traj = 12;
 
-	T_tot = Opt_Seed[0];			int Opt_Seed_Index = 1;
+  T_tot = Opt_Seed[0];			int Opt_Seed_Index = 1;
 
-	StateNDot_Traj = dlib::zeros_matrix<double>(NumOfStateNDot_Traj, Grids);
-	Ctrl_Traj = dlib::zeros_matrix<double>(NumOfCtrl_Traj, Grids);
+  StateNDot_Traj = dlib::zeros_matrix<double>(NumOfStateNDot_Traj, Grids);
+  Ctrl_Traj = dlib::zeros_matrix<double>(NumOfCtrl_Traj, Grids);
   Contact_Force_Traj = dlib::zeros_matrix<double>(NumOfContactForce_Traj, Grids);
   Contact_Force_Mid_Traj = dlib::zeros_matrix<double>(NumOfContactForceMid_Traj, Grids - 1);      // since the mid trajectory lies between the robot grids so its number is N-1
 
-	// 1. Retrieve the StateNDot_Traj matrix
-	for (int i = 0; i < Grids; i++)
+  // 1. Retrieve the StateNDot_Traj matrix
+  for (int i = 0; i < Grids; i++)
   {
-		for (int j = 0; j < NumOfStateNDot_Traj; j++)
+    for (int j = 0; j < NumOfStateNDot_Traj; j++)
     {
-			StateNDot_Traj(j,i) = Opt_Seed[Opt_Seed_Index];
-			Opt_Seed_Index = Opt_Seed_Index + 1;
+      StateNDot_Traj(j,i) = Opt_Seed[Opt_Seed_Index];
+      Opt_Seed_Index = Opt_Seed_Index + 1;
     }
   }
-	// cout<<StateNDot_Traj<<endl;
-	// 2. Retrieve the control matrix
-	for (int i = 0; i < Grids; i++)
+  // cout<<StateNDot_Traj<<endl;
+  // 2. Retrieve the control matrix
+  for (int i = 0; i < Grids; i++)
   {
-		for (int j = 0; j < NumOfCtrl_Traj; j++)
+    for (int j = 0; j < NumOfCtrl_Traj; j++)
     {
-			Ctrl_Traj(j,i) = Opt_Seed[Opt_Seed_Index];
-			Opt_Seed_Index = Opt_Seed_Index + 1;
+      Ctrl_Traj(j,i) = Opt_Seed[Opt_Seed_Index];
+      Opt_Seed_Index = Opt_Seed_Index + 1;
     }
   }
-	// cout<<Ctrl_Traj<<endl;
+  // cout<<Ctrl_Traj<<endl;
   // 3. Retrieve the contact force matrix
-	for (int i = 0; i < Grids; i++)
+  for (int i = 0; i < Grids; i++)
   {
-		for (int j = 0; j < NumOfContactForce_Traj; j++)
+    for (int j = 0; j < NumOfContactForce_Traj; j++)
     {
-			Contact_Force_Traj(j,i) = Opt_Seed[Opt_Seed_Index];
-			Opt_Seed_Index = Opt_Seed_Index + 1;
+      Contact_Force_Traj(j,i) = Opt_Seed[Opt_Seed_Index];
+      Opt_Seed_Index = Opt_Seed_Index + 1;
     }
   }
   // cout<<Contact_Force_Traj<<endl;
 
   // 4. Retrieve the contact force mid matrix
-	for (int i = 0; i < Grids-1; i++)
+  for (int i = 0; i < Grids-1; i++)
   {
-		for (int j = 0; j < NumOfContactForceMid_Traj; j++)
+    for (int j = 0; j < NumOfContactForceMid_Traj; j++)
     {
-			Contact_Force_Mid_Traj(j,i) = Opt_Seed[Opt_Seed_Index];
-			Opt_Seed_Index = Opt_Seed_Index + 1;
+      Contact_Force_Mid_Traj(j,i) = Opt_Seed[Opt_Seed_Index];
+      Opt_Seed_Index = Opt_Seed_Index + 1;
     }
   }
   // cout<<Contact_Force_Mid_Traj<<endl;
-	return ;
+  return ;
 }
 
 void Opt_Seed_Zip(std::vector<double> &Opt_Seed, dlib::matrix<double> & StateNDot_Traj, dlib::matrix<double> & Ctrl_Traj, dlib::matrix<double> & Contact_Force_Traj, dlib::matrix<double> & Contact_Force_Mid_Traj)
 {
   // This function is used to stack the coefficient matrices into a column vector
-	for (int i = 0; i < StateNDot_Traj.nc(); i++)
+  for (int i = 0; i < StateNDot_Traj.nc(); i++)
   {
-		for (int j = 0; j < StateNDot_Traj.nr(); j++)
+    for (int j = 0; j < StateNDot_Traj.nr(); j++)
     {
-			Opt_Seed.push_back(StateNDot_Traj(j,i));
-		}
-	}
-	for (int i = 0; i < Ctrl_Traj.nc(); i++)
+      Opt_Seed.push_back(StateNDot_Traj(j,i));
+    }
+  }
+  for (int i = 0; i < Ctrl_Traj.nc(); i++)
   {
-		for (int j = 0; j < Ctrl_Traj.nr(); j++)
+    for (int j = 0; j < Ctrl_Traj.nr(); j++)
     {
-			Opt_Seed.push_back(Ctrl_Traj(j,i));
-		}
-	}
-	for (int i = 0; i < Contact_Force_Traj.nc(); i++)
+      Opt_Seed.push_back(Ctrl_Traj(j,i));
+    }
+  }
+  for (int i = 0; i < Contact_Force_Traj.nc(); i++)
   {
-		for (int j = 0; j < Contact_Force_Traj.nr(); j++)
+    for (int j = 0; j < Contact_Force_Traj.nr(); j++)
     {
-			Opt_Seed.push_back(Contact_Force_Traj(j,i));
-		}
-	}
+      Opt_Seed.push_back(Contact_Force_Traj(j,i));
+    }
+  }
   for (int i = 0; i < Contact_Force_Mid_Traj.nc(); i++)
   {
     for (int j = 0; j < Contact_Force_Mid_Traj.nr(); j++)
     {
-			Opt_Seed.push_back(Contact_Force_Mid_Traj(j,i));
-		}
+      Opt_Seed.push_back(Contact_Force_Mid_Traj(j,i));
+    }
   }
 }
 
 std::vector<double> Seed_Guess_Gene_Robotstate(Tree_Node &Node_i, Tree_Node &Node_i_child)
 {
-	// This function is used to generate a configuration to initialize the optimization
-	std::vector<double> Robot_State_Seed = StateNDot2StateVec(Node_i.Node_StateNDot);
-	std::vector<double> ObjNConstraint_Val, ObjNConstraint_Type;
-	Seed_Conf_Optimization_ObjNConstraint(Robot_State_Seed, ObjNConstraint_Val, ObjNConstraint_Type);
-	snoptProblem Seed_Conf_Optimization_Pr;                     // This is the name of the Optimization problem for the robot configuration
+  // This function is used to generate a configuration to initialize the optimization
+  std::vector<double> Robot_State_Seed = StateNDot2StateVec(Node_i.Node_StateNDot);
+  std::vector<double> ObjNConstraint_Val, ObjNConstraint_Type;
+  Seed_Conf_Optimization_ObjNConstraint(Robot_State_Seed, ObjNConstraint_Val, ObjNConstraint_Type);
+  snoptProblem Seed_Conf_Optimization_Pr;                     // This is the name of the Optimization problem for the robot configuration
 
-	integer n = Robot_State_Seed.size();
-	integer neF = ObjNConstraint_Val.size();
-	integer lenA  =  n * neF;
+  integer n = Robot_State_Seed.size();
+  integer neF = ObjNConstraint_Val.size();
+  integer lenA  =  n * neF;
 
-	integer *iAfun = new integer[lenA];              integer *jAvar = new integer[lenA];					doublereal *A  = new doublereal[lenA];
+  integer *iAfun = new integer[lenA];              integer *jAvar = new integer[lenA];					doublereal *A  = new doublereal[lenA];
 
-	integer lenG   = lenA;							integer *iGfun = new integer[lenG];						integer *jGvar = new integer[lenG];
+  integer lenG   = lenA;							integer *iGfun = new integer[lenG];						integer *jGvar = new integer[lenG];
 
-	doublereal *x      = new doublereal[n];			doublereal *xlow   = new doublereal[n];					doublereal *xupp   = new doublereal[n];
-	doublereal *xmul   = new doublereal[n];			integer    *xstate = new    integer[n];
+  doublereal *x      = new doublereal[n];			doublereal *xlow   = new doublereal[n];					doublereal *xupp   = new doublereal[n];
+  doublereal *xmul   = new doublereal[n];			integer    *xstate = new    integer[n];
 
-	doublereal *F      = new doublereal[neF];		doublereal *Flow   = new doublereal[neF];				doublereal *Fupp   = new doublereal[neF];
-	doublereal *Fmul   = new doublereal[neF];		integer    *Fstate = new integer[neF];
+  doublereal *F      = new doublereal[neF];		doublereal *Flow   = new doublereal[neF];				doublereal *Fupp   = new doublereal[neF];
+  doublereal *Fmul   = new doublereal[neF];		integer    *Fstate = new integer[neF];
 
-	integer nxnames = 1;							integer nFnames = 1;				char *xnames = new char[nxnames*8];					char *Fnames = new char[nFnames*8];
+  integer nxnames = 1;							integer nFnames = 1;				char *xnames = new char[nxnames*8];					char *Fnames = new char[nFnames*8];
 
-	integer    ObjRow = 0;							doublereal ObjAdd = 0;
+  integer    ObjRow = 0;							doublereal ObjAdd = 0;
 
-	for (int i = 0; i < n; i++) {
-		xlow[i] = xlow_vec(i);						xupp[i] = xupp_vec(i);				xstate[i] = 0.0;							x[i] = Robot_State_Seed[i];  	// Initial guess
-	}
+  for (int i = 0; i < n; i++) {
+    xlow[i] = xlow_vec(i);						xupp[i] = xupp_vec(i);				xstate[i] = 0.0;							x[i] = Robot_State_Seed[i];  	// Initial guess
+  }
 
-	for(int i = 0; i<neF; i++){
-		// The lower bound is the same
-		Flow[i] = 0.0;
-		if(ObjNConstraint_Type[i]>0)	// Inequality constraint
-		{	Fupp[i] = Inf;}
-		else{
-			Fupp[i] = 0.0;}
-	}
+  for(int i = 0; i<neF; i++){
+    // The lower bound is the same
+    Flow[i] = 0.0;
+    if(ObjNConstraint_Type[i]>0)	// Inequality constraint
+    {	Fupp[i] = Inf;}
+    else{
+      Fupp[i] = 0.0;}
+    }
 
-	// Load the data for ToyProb ...
-	Seed_Conf_Optimization_Pr.setPrintFile  ( "Seed_Conf_Optimization_Pr.out" );
-	Seed_Conf_Optimization_Pr.setProblemSize( n, neF );
-	Seed_Conf_Optimization_Pr.setObjective  ( ObjRow, ObjAdd );
-	Seed_Conf_Optimization_Pr.setA          ( lenA, iAfun, jAvar, A );
-	Seed_Conf_Optimization_Pr.setG          ( lenG, iGfun, jGvar );
-	Seed_Conf_Optimization_Pr.setX          ( x, xlow, xupp, xmul, xstate );
-	Seed_Conf_Optimization_Pr.setF          ( F, Flow, Fupp, Fmul, Fstate );
-	Seed_Conf_Optimization_Pr.setXNames     ( xnames, nxnames );
-	Seed_Conf_Optimization_Pr.setFNames     ( Fnames, nFnames );
-	Seed_Conf_Optimization_Pr.setProbName   ( "Seed_Conf_Optimization_Pr" );
-	Seed_Conf_Optimization_Pr.setUserFun    ( Seed_Conf_Optimization_Pr_fn_);
-	// snopta will compute the Jacobian by finite-differences.
-	// The user has the option of calling  snJac  to define the
-	// coordinate arrays (iAfun,jAvar,A) and (iGfun, jGvar).
-	Seed_Conf_Optimization_Pr.computeJac    ();
-	Seed_Conf_Optimization_Pr.setIntParameter( "Derivative option", 0 );
-	Seed_Conf_Optimization_Pr.setIntParameter( "Print level", 0 );
-	Seed_Conf_Optimization_Pr.setIntParameter( "Major print level", 0 );
-	Seed_Conf_Optimization_Pr.setIntParameter( "Minor print level", 0 );
+    // Load the data for ToyProb ...
+    Seed_Conf_Optimization_Pr.setPrintFile  ( "Seed_Conf_Optimization_Pr.out" );
+    Seed_Conf_Optimization_Pr.setProblemSize( n, neF );
+    Seed_Conf_Optimization_Pr.setObjective  ( ObjRow, ObjAdd );
+    Seed_Conf_Optimization_Pr.setA          ( lenA, iAfun, jAvar, A );
+    Seed_Conf_Optimization_Pr.setG          ( lenG, iGfun, jGvar );
+    Seed_Conf_Optimization_Pr.setX          ( x, xlow, xupp, xmul, xstate );
+    Seed_Conf_Optimization_Pr.setF          ( F, Flow, Fupp, Fmul, Fstate );
+    Seed_Conf_Optimization_Pr.setXNames     ( xnames, nxnames );
+    Seed_Conf_Optimization_Pr.setFNames     ( Fnames, nFnames );
+    Seed_Conf_Optimization_Pr.setProbName   ( "Seed_Conf_Optimization_Pr" );
+    Seed_Conf_Optimization_Pr.setUserFun    ( Seed_Conf_Optimization_Pr_fn_);
+    // snopta will compute the Jacobian by finite-differences.
+    // The user has the option of calling  snJac  to define the
+    // coordinate arrays (iAfun,jAvar,A) and (iGfun, jGvar).
+    Seed_Conf_Optimization_Pr.computeJac    ();
+    Seed_Conf_Optimization_Pr.setIntParameter( "Derivative option", 0 );
+    Seed_Conf_Optimization_Pr.setIntParameter( "Print level", 0 );
+    Seed_Conf_Optimization_Pr.setIntParameter( "Major print level", 0 );
+    Seed_Conf_Optimization_Pr.setIntParameter( "Minor print level", 0 );
 
-	integer Cold = 0, Basis = 1, Warm = 2;
-	Seed_Conf_Optimization_Pr.solve( Cold );
-	for (int i = 0; i < 26; i++){Robot_State_Seed[i] = x[i];}
-	Robot_StateNDot Robot_StateNDot_Seed(Robot_State_Seed);
-	std::string input_name = "Seed Configuration in Opt";
-	Robot_Plot_fn(Robot_StateNDot_Seed, input_name);
-	delete []iAfun;  delete []jAvar;  delete []A;		delete []iGfun;  delete []jGvar;
-	delete []x;      delete []xlow;   delete []xupp;	delete []xmul;   delete []xstate;
-	delete []F;      delete []Flow;   delete []Fupp;	delete []Fmul;   delete []Fstate;
-	delete []xnames; delete []Fnames;
-	return Robot_State_Seed;
+    integer Cold = 0, Basis = 1, Warm = 2;
+    Seed_Conf_Optimization_Pr.solve( Cold );
+    for (int i = 0; i < 26; i++){Robot_State_Seed[i] = x[i];}
+    Robot_StateNDot Robot_StateNDot_Seed(Robot_State_Seed);
+    std::string input_name = "Seed Configuration in Opt";
+    Robot_Plot_fn(Robot_StateNDot_Seed, input_name);
+    delete []iAfun;  delete []jAvar;  delete []A;		delete []iGfun;  delete []jGvar;
+    delete []x;      delete []xlow;   delete []xupp;	delete []xmul;   delete []xstate;
+    delete []F;      delete []Flow;   delete []Fupp;	delete []Fmul;   delete []Fstate;
+    delete []xnames; delete []Fnames;
+    return Robot_State_Seed;
 }
 
 int Seed_Conf_Optimization_Pr_fn_(integer    *Status, integer *n,    doublereal x[],
-	     integer    *needF,  integer *neF,  doublereal F[],
-	     integer    *needG,  integer *neG,  doublereal G[],
-	     char       *cu,     integer *lencu,
-		 integer    iu[],    integer *leniu,
-		 doublereal ru[],    integer *lenru )
-{	 std::vector<double> Opt_Seed, ObjNConstraint_Val, ObjNConstraint_Type;
-	for (int i = 0; i < 26; i++){
-		Opt_Seed.push_back(x[i]);}
-	Seed_Conf_Optimization_ObjNConstraint(Opt_Seed, ObjNConstraint_Val, ObjNConstraint_Type);
-	for (int i = 0; i < ObjNConstraint_Val.size(); i++){
-		F[i] = ObjNConstraint_Val[i];}
-	return 0;
+     integer    *needF,  integer *neF,  doublereal F[],
+     integer    *needG,  integer *neG,  doublereal G[],
+     char       *cu,     integer *lencu,
+	 integer    iu[],    integer *leniu,
+	 doublereal ru[],    integer *lenru )
+{
+  std::vector<double> Opt_Seed, ObjNConstraint_Val, ObjNConstraint_Type;
+for (int i = 0; i < 26; i++){
+	Opt_Seed.push_back(x[i]);}
+Seed_Conf_Optimization_ObjNConstraint(Opt_Seed, ObjNConstraint_Val, ObjNConstraint_Type);
+for (int i = 0; i < ObjNConstraint_Val.size(); i++){
+	F[i] = ObjNConstraint_Val[i];}
+return 0;
 }
 
 void Seed_Conf_Optimization_ObjNConstraint(std::vector<double> &Opt_Seed, std::vector<double> &ObjNConstraint_Val, std::vector<double> &ObjNConstraint_Type)
 {
-	Robot_StateNDot StateNDot_Init_i(Opt_Seed);		dlib::matrix<double,12,1> End_Effector_Pos, End_Effector_Vel, End_Effector_Pos_ref, End_Effector_Vel_ref;
+  Robot_StateNDot StateNDot_Init_i(Opt_Seed);		dlib::matrix<double,12,1> End_Effector_Pos, End_Effector_Vel, End_Effector_Pos_ref, End_Effector_Vel_ref;
 
-	End_Effector_PosNVel(StateNDot_Init_i, End_Effector_Pos, End_Effector_Vel);
+  End_Effector_PosNVel(StateNDot_Init_i, End_Effector_Pos, End_Effector_Vel);
 
-	End_Effector_Pos_ref = Structure_P.Node_i.End_Effector_Pos;                              End_Effector_Vel_ref = Structure_P.Node_i.End_Effector_Vel;
+  End_Effector_Pos_ref = Structure_P.Node_i.End_Effector_Pos;                              End_Effector_Vel_ref = Structure_P.Node_i.End_Effector_Vel;
 
-	Robot_StateNDot StateNDot_Init_ref = Structure_P.Node_i.Node_StateNDot;
+  Robot_StateNDot StateNDot_Init_ref = Structure_P.Node_i.Node_StateNDot;
 
-	std::vector<double> StateVec_Init_ref = StateNDot2StateVec(StateNDot_Init_ref);
+  std::vector<double> StateVec_Init_ref = StateNDot2StateVec(StateNDot_Init_ref);
 
-	std::vector<double> sigma_i = Structure_P.Node_i.sigma;                                  std::vector<double> sigma_i_child = Structure_P.Node_i_child.sigma;
+  std::vector<double> sigma_i = Structure_P.Node_i.sigma;                                  std::vector<double> sigma_i_child = Structure_P.Node_i_child.sigma;
 
-	std::vector<double> rCOM_ref = Ang_Pos_fn(Structure_P.Node_i.Node_StateNDot, "rCOM");
-	std::vector<double> rA_ref = Ang_Pos_fn(Structure_P.Node_i.Node_StateNDot, "rA");
-	std::vector<double> rB_ref = Ang_Pos_fn(Structure_P.Node_i.Node_StateNDot, "rB");
-	std::vector<double> rC_ref = Ang_Pos_fn(Structure_P.Node_i.Node_StateNDot, "rC");
-	std::vector<double> rD_ref = Ang_Pos_fn(Structure_P.Node_i.Node_StateNDot, "rD");
-	std::vector<double> rE_ref = Ang_Pos_fn(Structure_P.Node_i.Node_StateNDot, "rE");
-	std::vector<double> rF_ref = Ang_Pos_fn(Structure_P.Node_i.Node_StateNDot, "rF");
-	std::vector<double> rT_ref = Ang_Pos_fn(Structure_P.Node_i.Node_StateNDot, "rT");
+  std::vector<double> rCOM_ref = Ang_Pos_fn(Structure_P.Node_i.Node_StateNDot, "rCOM");
+  std::vector<double> rA_ref = Ang_Pos_fn(Structure_P.Node_i.Node_StateNDot, "rA");
+  std::vector<double> rB_ref = Ang_Pos_fn(Structure_P.Node_i.Node_StateNDot, "rB");
+  std::vector<double> rC_ref = Ang_Pos_fn(Structure_P.Node_i.Node_StateNDot, "rC");
+  std::vector<double> rD_ref = Ang_Pos_fn(Structure_P.Node_i.Node_StateNDot, "rD");
+  std::vector<double> rE_ref = Ang_Pos_fn(Structure_P.Node_i.Node_StateNDot, "rE");
+  std::vector<double> rF_ref = Ang_Pos_fn(Structure_P.Node_i.Node_StateNDot, "rF");
+  std::vector<double> rT_ref = Ang_Pos_fn(Structure_P.Node_i.Node_StateNDot, "rT");
 
-	std::vector<double> rCOM_opt = Ang_Pos_fn(StateNDot_Init_i, "rCOM");
-	std::vector<double> rA_opt = Ang_Pos_fn(StateNDot_Init_i, "rA");
-	std::vector<double> rB_opt = Ang_Pos_fn(StateNDot_Init_i, "rB");
-	std::vector<double> rC_opt = Ang_Pos_fn(StateNDot_Init_i, "rC");
-	std::vector<double> rD_opt = Ang_Pos_fn(StateNDot_Init_i, "rD");
-	std::vector<double> rE_opt = Ang_Pos_fn(StateNDot_Init_i, "rE");
-	std::vector<double> rF_opt = Ang_Pos_fn(StateNDot_Init_i, "rF");
-	std::vector<double> rT_opt = Ang_Pos_fn(StateNDot_Init_i, "rT");
+  std::vector<double> rCOM_opt = Ang_Pos_fn(StateNDot_Init_i, "rCOM");
+  std::vector<double> rA_opt = Ang_Pos_fn(StateNDot_Init_i, "rA");
+  std::vector<double> rB_opt = Ang_Pos_fn(StateNDot_Init_i, "rB");
+  std::vector<double> rC_opt = Ang_Pos_fn(StateNDot_Init_i, "rC");
+  std::vector<double> rD_opt = Ang_Pos_fn(StateNDot_Init_i, "rD");
+  std::vector<double> rE_opt = Ang_Pos_fn(StateNDot_Init_i, "rE");
+  std::vector<double> rF_opt = Ang_Pos_fn(StateNDot_Init_i, "rF");
+  std::vector<double> rT_opt = Ang_Pos_fn(StateNDot_Init_i, "rT");
 
-	std::vector<double> vCOM_ref = Ang_Vel_fn(StateNDot_Init_i,"vCOM");
+  std::vector<double> vCOM_ref = Ang_Vel_fn(StateNDot_Init_i,"vCOM");
 
-	ObjNConstraint_Val.push_back(0);     ObjNConstraint_Type.push_back(1);
+  ObjNConstraint_Val.push_back(0);     ObjNConstraint_Type.push_back(1);
 
-	int Opt_Type_Flag = Sigma_TransNGoal(sigma_i, sigma_i_child);
+  int Opt_Type_Flag = Sigma_TransNGoal(sigma_i, sigma_i_child);
 
-	double sigma_diff = 0.0; double Obj_val = 0.0;
+  double sigma_diff = 0.0; double Obj_val = 0.0;
 
   double mini = 0.025;
 
-	for (int i = 0; i < 4; i++)
+  for (int i = 0; i < 4; i++)
   {
-		sigma_diff = sigma_diff + (sigma_i_child[i] - sigma_i[i]);
-	}
-	if(abs(sigma_diff)>0)
-	{
+    sigma_diff = sigma_diff + (sigma_i_child[i] - sigma_i[i]);
+  }
+  if(abs(sigma_diff)>0)
+  {
     // In this case, the robot changes its contact point.
 
-		Obj_val = 0.0;
+    Obj_val = 0.0;
 
-		// In this case, there must a contact modification during this whole process. As a result, the cost function is the quadratic sum of the state change.
+    // In this case, there must a contact modification during this whole process. As a result, the cost function is the quadratic sum of the state change.
 
-		for (int i = 0; i < StateVec_Init_ref.size(); i++)
-		{
-			Obj_val = Obj_val + (StateVec_Init_ref[i] - Opt_Seed[i]) * (StateVec_Init_ref[i] - Opt_Seed[i]);
-		}
+    for (int i = 0; i < StateVec_Init_ref.size(); i++)
+    {
+      Obj_val = Obj_val + (StateVec_Init_ref[i] - Opt_Seed[i]) * (StateVec_Init_ref[i] - Opt_Seed[i]);
+    }
 
-		if(sigma_diff<0)
-		{
-			// Contact break/retract this part is a little tough to handle. However, in our problem, we only consider the foot contact retract
+    if(sigma_diff<0)
+    {
+      // Contact break/retract this part is a little tough to handle. However, in our problem, we only consider the foot contact retract
 
-			int Contact_Index = Sigma_Change(sigma_i, sigma_i_child);
+      int Contact_Index = Sigma_Change(sigma_i, sigma_i_child);
 
-			if(Contact_Index<2)
-			{
-				// In this case, the robot will lift up left/right foot
-				if(Contact_Index == 0)
-				{
-					// In this case, the robot will lift AB foot so we would like to move the COM to CD
-					ObjNConstraint_Val.push_back(rCOM_opt[0] - rD_ref[0] - mini);
-					ObjNConstraint_Type.push_back(1);
-					ObjNConstraint_Val.push_back(rC_ref[0] - rCOM_opt[0] - mini);
-					ObjNConstraint_Type.push_back(1);
-				}
-				else
-				{
-					// In this case, the robot will lift CD foot so we would like to move the COM to AB
-					ObjNConstraint_Val.push_back(rCOM_opt[0] - rB_ref[0] - mini);
-					ObjNConstraint_Type.push_back(1);
-					ObjNConstraint_Val.push_back(rA_ref[0] - rCOM_opt[0] - mini);
-					ObjNConstraint_Type.push_back(1);
-				}
-			}
-		}
-		else
-		{
-			// Making contact
-			int Contact_Index = Sigma_Change(sigma_i, sigma_i_child);
+      if(Contact_Index<2)
+      {
+        // In this case, the robot will lift up left/right foot
+        if(Contact_Index == 0)
+        {
+          // In this case, the robot will lift AB foot so we would like to move the COM to CD
+          ObjNConstraint_Val.push_back(rCOM_opt[0] - rD_ref[0] - mini);
+          ObjNConstraint_Type.push_back(1);
+          ObjNConstraint_Val.push_back(rC_ref[0] - rCOM_opt[0] - mini);
+          ObjNConstraint_Type.push_back(1);
+        }
+        else
+        {
+          // In this case, the robot will lift CD foot so we would like to move the COM to AB
+          ObjNConstraint_Val.push_back(rCOM_opt[0] - rB_ref[0] - mini);
+          ObjNConstraint_Type.push_back(1);
+          ObjNConstraint_Val.push_back(rA_ref[0] - rCOM_opt[0] - mini);
+          ObjNConstraint_Type.push_back(1);
+        }
+      }
+    }
+    else
+    {
+      // Making contact
+      int Contact_Index = Sigma_Change(sigma_i, sigma_i_child);
 
-			// The next step is to figure out which foot to step and which direction to go
+      // The next step is to figure out which foot to step and which direction to go
 
-			double vCOM_sign = vCOM_ref[0]/abs(vCOM_ref[0]);
+      double vCOM_sign = vCOM_ref[0]/abs(vCOM_ref[0]);
 
-			if(Contact_Index<2)
-			{
+      if(Contact_Index<2)
+      {
         // Making contact with foot
-				if(Contact_Index > 0)
-				{
+        if(Contact_Index > 0)
+        {
           // Making contact with the right foot
-					if(vCOM_sign>0)
-					{
+          if(vCOM_sign>0)
+          {
             // Robot moves forward
-						ObjNConstraint_Val.push_back(rD_opt[0] - rA_ref[0] - mini);
-						ObjNConstraint_Type.push_back(0);
-					}
-					else
-					{
+            ObjNConstraint_Val.push_back(rD_opt[0] - rA_ref[0] - mini);
+            ObjNConstraint_Type.push_back(0);
+          }
+          else
+          {
             // Robot moves backward
-						ObjNConstraint_Val.push_back(rB_ref[0] - rC_ref[0] - mini);
-						ObjNConstraint_Type.push_back(1);
-					}
-				}
-				else
-				{
+            ObjNConstraint_Val.push_back(rB_ref[0] - rC_ref[0] - mini);
+            ObjNConstraint_Type.push_back(1);
+          }
+        }
+        else
+        {
           // Making contact with the left foot
-					if(vCOM_sign>0)
-					{
-						ObjNConstraint_Val.push_back(rB_opt[0] - rC_ref[0] - mini);
-						ObjNConstraint_Type.push_back(1);
-					}
-					else
-					{
-						ObjNConstraint_Val.push_back(rD_ref[0] - rA_opt[0] - mini);
-						ObjNConstraint_Type.push_back(1);
-					}
-					// ObjNConstraint_Val.push_back((rT_opt[0] - rT_ref[0]) * (rT_opt[0] - rT_ref[0]));
-					// ObjNConstraint_Type.push_back(0);
-				}
-			}
-		}
-	}
-	else
-	{
-		// This is used for the self-stasbilization process so kinetic energy is the only cost
-		Obj_val = Kinetic_Energy_fn(StateNDot_Init_i);
-	}
+          if(vCOM_sign>0)
+          {
+            ObjNConstraint_Val.push_back(rB_opt[0] - rC_ref[0] - mini);
+            ObjNConstraint_Type.push_back(1);
+          }
+          else
+          {
+            ObjNConstraint_Val.push_back(rD_ref[0] - rA_opt[0] - mini);
+            ObjNConstraint_Type.push_back(1);
+          }
+          // ObjNConstraint_Val.push_back((rT_opt[0] - rT_ref[0]) * (rT_opt[0] - rT_ref[0]));
+          // ObjNConstraint_Type.push_back(0);
+        }
+      }
+    }
+  }
+  else
+  {
+    // This is used for the self-stasbilization process so kinetic energy is the only cost
+    Obj_val = Kinetic_Energy_fn(StateNDot_Init_i);
+  }
+
   ObjNConstraint_Val[0] = Obj_val;
 
   // Here some heuristic inequality constraint have been added. Now the job is to figure out the equality constraint
 
-	double Hand_max = max(rE_ref[0], rF_ref[0]);
-	Hand_max = max(Hand_max, rD_ref[0]);
-	Hand_max = max(Hand_max, rC_ref[0]);
-	Hand_max = max(Hand_max, rA_ref[0]);
-	Hand_max = max(Hand_max, rT_opt[0]);
+  // double Hand_max = max(rE_ref[0], rF_ref[0]);
+  // Hand_max = max(Hand_max, rD_ref[0]);
+  // Hand_max = max(Hand_max, rC_ref[0]);
+  // Hand_max = max(Hand_max, rA_ref[0]);
+  // Hand_max = max(Hand_max, rT_opt[0]);
 
+  dlib::matrix<double,6,1> End_Effector_Dist;
 
-	dlib::matrix<double,6,1> End_Effector_Dist;
-	std::vector<int> End_Effector_Obs(6);
+  std::vector<int> End_Effector_Obs(6);
 
-	End_Effector_Obs_Dist_Fn(End_Effector_Pos, End_Effector_Dist, End_Effector_Obs);
+  End_Effector_Obs_Dist_Fn(End_Effector_Pos, End_Effector_Dist, End_Effector_Obs);
 
-	dlib::matrix<double> Eqn_Pos_Matrix, Ineqn_Pos_Matrix, Eqn_Vel_Matrix, Eqn_Maint_Matrix, Matrix_result;
-	std::vector<double> sigma_temp, sigma_real;
-	if(Opt_Type_Flag == -1)
-	{
-		// In this case, sigma_i has to be maintained.
-		sigma_real = sigma_i;
-	}
-	else
-	{
-		// In other cases, sigma_i_child has to be maintained.
-		sigma_real = sigma_i_child;
-	}
+  dlib::matrix<double> Eqn_Pos_Matrix, Ineqn_Pos_Matrix, Eqn_Vel_Matrix, Eqn_Maint_Matrix, Matrix_result;
 
-	sigma_temp = Sigma2Pos(sigma_real, 0);			Eqn_Pos_Matrix = Diag_Matrix_fn(sigma_temp);
-	sigma_temp = Sigma2Pos(sigma_real, 1);			Ineqn_Pos_Matrix = Diag_Matrix_fn(sigma_temp);
-	sigma_temp = Sigma2Vel(sigma_real);				  Eqn_Vel_Matrix = Diag_Matrix_fn(sigma_temp);
+  std::vector<double> sigma_temp, sigma_real;
 
-	// 1. Active constraints have to be satisfied: Position and Velocity
-	Matrix_result = Eqn_Pos_Matrix * End_Effector_Dist;
-	ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 0);
+  if(Opt_Type_Flag == -1)
+  {
+    // In this case, sigma_i has to be maintained.
+    sigma_real = sigma_i;
+  }
+  else
+  {
+    // In other cases, sigma_i_child has to be maintained.
+    sigma_real = sigma_i_child;
+  }
 
-	Matrix_result = Eqn_Vel_Matrix * End_Effector_Vel;
-	ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 0);
+  sigma_temp = Sigma2Pos(sigma_real, 0);			Eqn_Pos_Matrix = Diag_Matrix_fn(sigma_temp);
+  sigma_temp = Sigma2Pos(sigma_real, 1);			Ineqn_Pos_Matrix = Diag_Matrix_fn(sigma_temp);
+  sigma_temp = Sigma2Vel(sigma_real);				  Eqn_Vel_Matrix = Diag_Matrix_fn(sigma_temp);
 
-	// 2. Inactive constraints have to be strictly away from the obstacle
-	dlib::matrix<double> ones_vector, temp_matrix;
-	ones_vector = ONES_VECTOR_fn(6);
-	Matrix_result = Ineqn_Pos_Matrix * (End_Effector_Dist - ones_vector * mini);
-	ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 1);
+  // 1. Active constraints have to be satisfied: Position and Velocity
+  Matrix_result = Eqn_Pos_Matrix * End_Effector_Dist;
+  ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 0);
 
-	// 3. Middle joints have to be strictly away from the obs
-	temp_matrix = Middle_Joint_Obs_Dist_Fn(StateNDot_Init_i);
-	Matrix_result = temp_matrix - ones_vector * mini;
-	ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 1);
+  Matrix_result = Eqn_Vel_Matrix * End_Effector_Vel;
+  ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 0);
 
-	// 4. One more constraint to be added is to maintain the active unchanged constraint
-	if(Opt_Type_Flag == -1)
-	{
-		Eqn_Maint_Matrix = Eqn_Maint_Matrix_fn(sigma_i, sigma_i);
-	}
-	else
-	{
-		Eqn_Maint_Matrix = Eqn_Maint_Matrix_fn(sigma_i, sigma_i_child);
-	}
-	Matrix_result = Eqn_Maint_Matrix * (End_Effector_Pos_ref - End_Effector_Pos);
-	ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 0);
-	return;
+  // 2. Inactive constraints have to be strictly away from the obstacle
+  dlib::matrix<double> ones_vector, temp_matrix;
+  ones_vector = ONES_VECTOR_fn(6);
+  Matrix_result = Ineqn_Pos_Matrix * (End_Effector_Dist - ones_vector * mini);
+  ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 1);
+
+  // 3. Middle joints have to be strictly away from the obs
+  temp_matrix = Middle_Joint_Obs_Dist_Fn(StateNDot_Init_i);
+  Matrix_result = temp_matrix - ones_vector * mini;
+  ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 1);
+
+  // 4. One more constraint to be added is to maintain the active unchanged constraint
+  if(Opt_Type_Flag == -1)
+  {
+    Eqn_Maint_Matrix = Eqn_Maint_Matrix_fn(sigma_i, sigma_i);
+  }
+  else
+  {
+    Eqn_Maint_Matrix = Eqn_Maint_Matrix_fn(sigma_i, sigma_i_child);
+  }
+  Matrix_result = Eqn_Maint_Matrix * (End_Effector_Pos_ref - End_Effector_Pos);
+  ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 0);
+  return;
 }
 
 std::vector<double> Time_Seed_Queue_fn(double Time_Interval, int Total_Num)
 {
-	// This function is used to generate the Time_Seed_Queue
-	double Time_Center = 0.5;
-	int One_Side_Num = (Total_Num - 1)/2;
-	std::vector<double> Time_Seed_Queue;
-	Time_Seed_Queue.push_back(Time_Center);
-	for (int i = 1; i < One_Side_Num; i++)
+  // This function is used to generate the Time_Seed_Queue
+  double Time_Center = 0.5;
+  int One_Side_Num = (Total_Num - 1)/2;
+  std::vector<double> Time_Seed_Queue;
+  Time_Seed_Queue.push_back(Time_Center);
+  for (int i = 1; i < One_Side_Num; i++)
   {
-		Time_Seed_Queue.push_back(Time_Center + Time_Interval * i);
-		Time_Seed_Queue.push_back(Time_Center - Time_Interval * i);
-	}
-	// std::vector<double> Time_Seed_Queue;
-	// Time_Seed_Queue.push_back(Time_Center);
-	// for (int i = 0; i < Total_Num; i++) {
-	// 	Time_Seed_Queue.push_back(Time_Center + (i+1) * Time_Interval);
-	// }
-	return Time_Seed_Queue;
+    Time_Seed_Queue.push_back(Time_Center + Time_Interval * i);
+    Time_Seed_Queue.push_back(Time_Center - Time_Interval * i);
+  }
+  // std::vector<double> Time_Seed_Queue;
+  // Time_Seed_Queue.push_back(Time_Center);
+  // for (int i = 0; i < Total_Num; i++) {
+  // 	Time_Seed_Queue.push_back(Time_Center + (i+1) * Time_Interval);
+  // }
+  return Time_Seed_Queue;
 }
 
 std::vector<double> Sigma2Pos(std::vector<double> &sigma, int EqOrIneq)
 {
-	std::vector<double> sigma_pos;
-	if(EqOrIneq==0)
-	{
-		sigma_pos.push_back(sigma[0]);
-		sigma_pos.push_back(sigma[0]);
-		sigma_pos.push_back(sigma[1]);
-		sigma_pos.push_back(sigma[1]);
-		sigma_pos.push_back(sigma[2]);
-		sigma_pos.push_back(sigma[3]);
-	}
-	else
-	{
-		sigma_pos.push_back(!sigma[0]);
-		sigma_pos.push_back(!sigma[0]);
-		sigma_pos.push_back(!sigma[1]);
-		sigma_pos.push_back(!sigma[1]);
-		sigma_pos.push_back(!sigma[2]);
-		sigma_pos.push_back(!sigma[3]);
-	}
-	return sigma_pos;
+  std::vector<double> sigma_pos;
+  if(EqOrIneq==0)
+  {
+    sigma_pos.push_back(sigma[0]);
+    sigma_pos.push_back(sigma[0]);
+    sigma_pos.push_back(sigma[1]);
+    sigma_pos.push_back(sigma[1]);
+    sigma_pos.push_back(sigma[2]);
+    sigma_pos.push_back(sigma[3]);
+  }
+  else
+  {
+    sigma_pos.push_back(!sigma[0]);
+    sigma_pos.push_back(!sigma[0]);
+    sigma_pos.push_back(!sigma[1]);
+    sigma_pos.push_back(!sigma[1]);
+    sigma_pos.push_back(!sigma[2]);
+    sigma_pos.push_back(!sigma[3]);
+  }
+  return sigma_pos;
 }
 
 std::vector<double> Sigma2Vel(std::vector<double> &sigma)
-{	std::vector<double> sigma_pos;
-	sigma_pos.push_back(sigma[0]);
-	sigma_pos.push_back(sigma[0]);
-	sigma_pos.push_back(sigma[0]);
-	sigma_pos.push_back(sigma[0]);
-	sigma_pos.push_back(sigma[1]);
-	sigma_pos.push_back(sigma[1]);
-	sigma_pos.push_back(sigma[1]);
-	sigma_pos.push_back(sigma[1]);
-	sigma_pos.push_back(sigma[2]);
-	sigma_pos.push_back(sigma[2]);
-	sigma_pos.push_back(sigma[3]);
-	sigma_pos.push_back(sigma[3]);
-	return sigma_pos;
+{
+  std::vector<double> sigma_pos;
+  sigma_pos.push_back(sigma[0]);
+  sigma_pos.push_back(sigma[0]);
+  sigma_pos.push_back(sigma[0]);
+  sigma_pos.push_back(sigma[0]);
+  sigma_pos.push_back(sigma[1]);
+  sigma_pos.push_back(sigma[1]);
+  sigma_pos.push_back(sigma[1]);
+  sigma_pos.push_back(sigma[1]);
+  sigma_pos.push_back(sigma[2]);
+  sigma_pos.push_back(sigma[2]);
+  sigma_pos.push_back(sigma[3]);
+  sigma_pos.push_back(sigma[3]);
+  return sigma_pos;
 }
 
 int Sigma_TransNGoal(std::vector<double> & sigma_i, std::vector<double> & sigma_i_child)
 {
-	// The role of this function is actually very important because making contact is easier than retracting contact since retracting contact requires an accumulation of
-	// the necessary kinetic energy of certain body parts before a retract can be made
-	double sigma_result = 0.0;
-	int Opt_Type_Flag = 0;
-	for (int i = 0; i < sigma_i.size(); i++) {
-		sigma_result = sigma_result + sigma_i_child[i] - sigma_i[i];
-	}
-	if(sigma_result>0)
-	{
-		// In this case, it is making the contact so the Critical frame is the ending frame
-		Opt_Type_Flag = 1;
-	}
-	else
-	{
-		if (sigma_result ==0)
-		{
-			// In this case, it is the self-opt process
-			Opt_Type_Flag = 0;
-		}
-		else
-		{
-			// In this case, it is the retracting contact process: the whole process is divided into two subprocesses, energy accumulation, energy release
-			Opt_Type_Flag = -1;
-		}
-	}
+  // The role of this function is actually very important because making contact is easier than retracting contact since retracting contact requires an accumulation of
+  // the necessary kinetic energy of certain body parts before a retract can be made
+  double sigma_result = 0.0;
+  int Opt_Type_Flag = 0;
+  for (int i = 0; i < sigma_i.size(); i++) {
+    sigma_result = sigma_result + sigma_i_child[i] - sigma_i[i];
+  }
+  if(sigma_result>0)
+  {
+    // In this case, it is making the contact so the Critical frame is the ending frame
+    Opt_Type_Flag = 1;
+  }
+  else
+  {
+    if (sigma_result ==0)
+    {
+      // In this case, it is the self-opt process
+      Opt_Type_Flag = 0;
+    }
+    else
+    {
+      // In this case, it is the retracting contact process: the whole process is divided into two subprocesses, energy accumulation, energy release
+      Opt_Type_Flag = -1;
+    }
+  }
   return Opt_Type_Flag;
 }
 
 Robot_StateNDot DlibRobotstate2StateNDot(dlib::matrix<double> &DlibRobotstate)
 {
-	// This function is used to convert the dlib matrix robot state to Robot_StateNDot type
-	std::vector<double> Robot_StateNDot_vec;
-	for (int i = 0; i < DlibRobotstate.nr(); i++)
+  // This function is used to convert the dlib matrix robot state to Robot_StateNDot type
+  std::vector<double> Robot_StateNDot_vec;
+  for (int i = 0; i < DlibRobotstate.nr(); i++)
   {
-		Robot_StateNDot_vec.push_back(DlibRobotstate(i));
+    Robot_StateNDot_vec.push_back(DlibRobotstate(i));
   }
-	Robot_StateNDot Robot_StateNDot_i(Robot_StateNDot_vec);
+  Robot_StateNDot Robot_StateNDot_i(Robot_StateNDot_vec);
 
-	return Robot_StateNDot_i;
+  return Robot_StateNDot_i;
 }
 
 dlib::matrix<double> Eqn_Maint_Matrix_fn(std::vector<double> &sigma_i, std::vector<double> &sigma_i_child)
 {
-	// This function is used to generate the contact maintenance matrix
-	std::vector<double> sigma_maint;
-	sigma_maint.push_back(sigma_i[0] * sigma_i_child[0]);
-	sigma_maint.push_back(sigma_i[0] * sigma_i_child[0]);
-	sigma_maint.push_back(sigma_i[0] * sigma_i_child[0]);
-	sigma_maint.push_back(sigma_i[0] * sigma_i_child[0]);
-	sigma_maint.push_back(sigma_i[1] * sigma_i_child[1]);
-	sigma_maint.push_back(sigma_i[1] * sigma_i_child[1]);
-	sigma_maint.push_back(sigma_i[1] * sigma_i_child[1]);
-	sigma_maint.push_back(sigma_i[1] * sigma_i_child[1]);
-	sigma_maint.push_back(sigma_i[2] * sigma_i_child[2]);
-	sigma_maint.push_back(sigma_i[2] * sigma_i_child[2]);
-	sigma_maint.push_back(sigma_i[3] * sigma_i_child[3]);
-	sigma_maint.push_back(sigma_i[3] * sigma_i_child[3]);
+  // This function is used to generate the contact maintenance matrix
+  std::vector<double> sigma_maint;
+  sigma_maint.push_back(sigma_i[0] * sigma_i_child[0]);
+  sigma_maint.push_back(sigma_i[0] * sigma_i_child[0]);
+  sigma_maint.push_back(sigma_i[0] * sigma_i_child[0]);
+  sigma_maint.push_back(sigma_i[0] * sigma_i_child[0]);
+  sigma_maint.push_back(sigma_i[1] * sigma_i_child[1]);
+  sigma_maint.push_back(sigma_i[1] * sigma_i_child[1]);
+  sigma_maint.push_back(sigma_i[1] * sigma_i_child[1]);
+  sigma_maint.push_back(sigma_i[1] * sigma_i_child[1]);
+  sigma_maint.push_back(sigma_i[2] * sigma_i_child[2]);
+  sigma_maint.push_back(sigma_i[2] * sigma_i_child[2]);
+  sigma_maint.push_back(sigma_i[3] * sigma_i_child[3]);
+  sigma_maint.push_back(sigma_i[3] * sigma_i_child[3]);
 
-	dlib::matrix<double> Eqn_Maint_Matrix;
-	Eqn_Maint_Matrix = Diag_Matrix_fn(sigma_maint);
-	return Eqn_Maint_Matrix;
+  dlib::matrix<double> Eqn_Maint_Matrix;
+  Eqn_Maint_Matrix = Diag_Matrix_fn(sigma_maint);
+  return Eqn_Maint_Matrix;
 }
 
 std::vector<double> QuadraticSpline_Coeff_fn(double T, double x_init, double x_end, double xdot_init)
@@ -3056,40 +3090,40 @@ double CubicSpline_Eval(double T, std::vector<double> & CubicSpline_Coeff_vec, d
 
 dlib::matrix<double> Dynamics_RHS_Matrix_fn(dlib::matrix<double> &Jac_Full, dlib::matrix<double> &B_q)
 {
-	dlib::matrix<double> Jac_Full_Trans, Dynamics_RHS_Matrix;
+  dlib::matrix<double> Jac_Full_Trans, Dynamics_RHS_Matrix;
 
-	Jac_Full_Trans = dlib::trans(Jac_Full);
+  Jac_Full_Trans = dlib::trans(Jac_Full);
 
-	const int Dynamics_RHS_Matrix_Row = Jac_Full_Trans.nr();
-	const int Dynamics_RHS_Matrix_Col = Jac_Full_Trans.nc() + B_q.nc();
-	Dynamics_RHS_Matrix = dlib::zeros_matrix<double>(Dynamics_RHS_Matrix_Row, Dynamics_RHS_Matrix_Col);
-	for (int i = 0; i < Dynamics_RHS_Matrix_Col; i++)
+  const int Dynamics_RHS_Matrix_Row = Jac_Full_Trans.nr();
+  const int Dynamics_RHS_Matrix_Col = Jac_Full_Trans.nc() + B_q.nc();
+  Dynamics_RHS_Matrix = dlib::zeros_matrix<double>(Dynamics_RHS_Matrix_Row, Dynamics_RHS_Matrix_Col);
+  for (int i = 0; i < Dynamics_RHS_Matrix_Col; i++)
   {
-		if (i<Jac_Full_Trans.nc())
-		{
-			dlib::set_colm(Dynamics_RHS_Matrix, i) = dlib::colm(Jac_Full_Trans,i);
-		}
-		else
+    if (i<Jac_Full_Trans.nc())
     {
-			dlib::set_colm(Dynamics_RHS_Matrix, i) = dlib::colm(B_q,i-Jac_Full_Trans.nc());
-		}
-	}
-	return Dynamics_RHS_Matrix;
+      dlib::set_colm(Dynamics_RHS_Matrix, i) = dlib::colm(Jac_Full_Trans,i);
+    }
+    else
+    {
+      dlib::set_colm(Dynamics_RHS_Matrix, i) = dlib::colm(B_q,i-Jac_Full_Trans.nc());
+    }
+  }
+  return Dynamics_RHS_Matrix;
 }
 
 int Sigma_Change(std::vector<double> &sigma_i, std::vector<double> &sigma_i_child)
 {
-	// This function is only used when a contact change is made for sure
-	int Sigma_Index = 0;
-	double Sigma_Result = 0;
-	for (int i = 0; i < 4; i++)
-	{
-		Sigma_Result = sigma_i[i] - sigma_i_child[i];
-		if(abs(Sigma_Result)==1)
-		{
-			Sigma_Index = i;
-			break;
-		}
-	}
-	return Sigma_Index;
+  // This function is only used when a contact change is made for sure
+  int Sigma_Index = 0;
+  double Sigma_Result = 0;
+  for (int i = 0; i < 4; i++)
+  {
+    Sigma_Result = sigma_i[i] - sigma_i_child[i];
+    if(abs(Sigma_Result)==1)
+    {
+      Sigma_Index = i;
+      break;
+    }
+  }
+  return Sigma_Index;
 }
