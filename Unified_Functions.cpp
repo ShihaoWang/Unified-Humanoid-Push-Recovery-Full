@@ -446,7 +446,7 @@ void Default_Init_Pr_ObjNConstraint(std::vector<double> &Opt_Seed, std::vector<d
 
   // 4. There may also be a constraint on the kinetic energy of the robot
   double KE_Init = Kinetic_Energy_fn(StateNDot_Init_i);
-  ObjNConstraint_Val.push_back(KE_Init - 10);
+  ObjNConstraint_Val.push_back(KE_Init - 40);
   ObjNConstraint_Type.push_back(0);
 
   return;
@@ -1274,7 +1274,7 @@ double Nodes_Optimization_ObjNConstraint(std::vector<double> &Opt_Seed, std::vec
     ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 0);
 
     // Last is the constraint on the change of state based on the integration of velocity and acceleration bounds
-    for (int ss = 0; ss < 13; ss++)
+    for (int ss = 3; ss < 13; ss++)
     {
       // This is the bounds on the position change according to the velocity
       double xdot_max = max(Robostatedot_Front(ss), Robostatedot_Back(ss));
@@ -1298,7 +1298,6 @@ double Nodes_Optimization_ObjNConstraint(std::vector<double> &Opt_Seed, std::vec
     //   ObjNConstraint_Val.push_back(Vel_Act_Change - xddot_min*T);
     //   ObjNConstraint_Type.push_back(1);
     // }
-
   }
 
   // 3. Contact manifold constraints on position, velocty and acceleration
@@ -2219,9 +2218,9 @@ std::vector<double> Seed_Guess_Gene(Tree_Node &Node_i, Tree_Node &Node_i_child)
 
   // No matter what method is chosen, the output from this step are four things: States/Accelerations at grids and States/Accelerations at mid-points
 
-  // State_Traj_Interpolater(Init_Config, Seed_Config, StateNDot_Traj, Acc_Traj, StateNdot_Mid_Traj, Acc_Mid_Traj,1);
+  State_Traj_Interpolater(Init_Config, Seed_Config, StateNDot_Traj, Acc_Traj, StateNdot_Mid_Traj, Acc_Mid_Traj,1);
   // State_Traj_Interpolater(Init_Config, Seed_Config, StateNDot_Traj, Acc_Traj, StateNdot_Mid_Traj, Acc_Mid_Traj,2);
-  State_Traj_Interpolater(Init_Config, Seed_Config, StateNDot_Traj, Acc_Traj, StateNdot_Mid_Traj, Acc_Mid_Traj,3);
+  // State_Traj_Interpolater(Init_Config, Seed_Config, StateNDot_Traj, Acc_Traj, StateNdot_Mid_Traj, Acc_Mid_Traj,3);
 
   // Second is to initialize: Control, Contact Force and Contact_Force_Mid
   // Since the acceleration is directly given in advance. This makes the initialization easier.
