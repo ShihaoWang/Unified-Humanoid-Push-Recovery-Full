@@ -44,8 +44,6 @@ dlib::matrix<double> xlow_vec;							dlib::matrix<double> xupp_vec;
 dlib::matrix<double> ctrl_low_vec;					dlib::matrix<double> ctrl_upp_vec;
 dlib::matrix<double>  Envi_Map;							dlib::matrix<double> Envi_Map_Normal, Envi_Map_Tange; // The Normal and tangential vector of the plane
 
-// double Acc_max = 5;
-
 /**
 * Some global values are defined
 * Description
@@ -53,13 +51,17 @@ dlib::matrix<double>  Envi_Map;							dlib::matrix<double> Envi_Map_Normal, Envi
 
 int Grids = 8;			double mu = 0.35;
 
-int Variable_Num = (13 + 10 + 12) * Grids + 12 * (Grids - 1) + 1;   // The second term is the contact force during at the collocation point
+int Variable_Num = (26 + 10 + 12) * Grids + 1;   //
 
 double h_k; 															      // This value will be adaptively changed to formulate an optimal solution the meaning of this variable is the time step between two grids
 std::vector<Tree_Node_Ptr> All_Nodes;						// All nodes are here!
 std::vector<Tree_Node_Ptr> Children_Nodes;			// All children nodes!
 std::vector<Tree_Node_Ptr> Frontier_Nodes;			// Only Frontier ndoes!
 std::vector<double> Frontier_Nodes_Cost;		    // The kinetic energy of each nodes
+
+// Used for the manifold projection
+dlib::matrix<double> Jac_Act_Trans_Manifold;
+std::vector<double> Pote_Robotstate(26), Sigma_Act_Manifold(6);
 
 void Envi_Map_Defi()
 {
@@ -300,7 +302,10 @@ std::vector<double> Default_Init_Opt(std::vector<double> &Robot_State_Init)
 
   // Set the upper and lower bounds.
   for (int i = 0; i < n; i++) {
-    xlow[i] = xlow_vec(i);						xupp[i] = xupp_vec(i);						xstate[i] = 0.0;					x[i] = Robot_State_Init[i];  	// Initial guess
+    xlow[i] = xlow_vec(i);
+    xupp[i] = xupp_vec(i);
+    xstate[i] = 0.0;
+    x[i] = Robot_State_Init[i];  	// Initial guess
   }
 
   for(int i = 0; i<neF; i++)
@@ -891,38 +896,38 @@ dlib::matrix<double> Jac_Full_fn(const Robot_StateNDot &Robot_StateNDot_i)
   return T;
 }
 
-dlib::matrix<double> Jacdot_qdot_fn(const Robot_StateNDot &Robot_StateNDot_i)
-{
-  double rIx = Robot_StateNDot_i.rIx;					double rIy = Robot_StateNDot_i.rIy;						double theta = Robot_StateNDot_i.theta;
-  double q1 = Robot_StateNDot_i.q1;					  double q2 = Robot_StateNDot_i.q2;						double q3 = Robot_StateNDot_i.q3;
-  double q4 = Robot_StateNDot_i.q4;					  double q5 = Robot_StateNDot_i.q5;						double q6 = Robot_StateNDot_i.q6;
-  double q7 = Robot_StateNDot_i.q7;					  double q8 = Robot_StateNDot_i.q8;						double q9 = Robot_StateNDot_i.q9;
-  double q10 = Robot_StateNDot_i.q10;
-
-  double rIxdot = Robot_StateNDot_i.rIxdot;			double rIydot = Robot_StateNDot_i.rIydot;				double thetadot = Robot_StateNDot_i.thetadot;
-  double q1dot = Robot_StateNDot_i.q1dot;				double q2dot = Robot_StateNDot_i.q2dot;					double q3dot = Robot_StateNDot_i.q3dot;
-  double q4dot = Robot_StateNDot_i.q4dot;				double q5dot = Robot_StateNDot_i.q5dot;					double q6dot = Robot_StateNDot_i.q6dot;
-  double q7dot = Robot_StateNDot_i.q7dot;				double q8dot = Robot_StateNDot_i.q8dot;					double q9dot = Robot_StateNDot_i.q9dot;
-  double q10dot = Robot_StateNDot_i.q10dot;
-
-  dlib::matrix<double> T;
-  T = dlib::zeros_matrix<double>(13,1);
-
-  T(0,0) = (q1dot*q1dot)*sin(q1+q2+theta)*(1.3E1/4.0E1)+(q2dot*q2dot)*sin(q1+q2+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*sin(q1+q2+theta)*(1.3E1/4.0E1)+(q1dot*q1dot)*sin(q1+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*sin(q1+theta)*(1.3E1/4.0E1)+sqrt(4.1E1)*(q1dot*q1dot)*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(q2dot*q2dot)*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(q3dot*q3dot)*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(thetadot*thetadot)*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/4.0E1)+q1dot*q2dot*sin(q1+q2+theta)*(1.3E1/2.0E1)+q1dot*thetadot*sin(q1+q2+theta)*(1.3E1/2.0E1)+q2dot*thetadot*sin(q1+q2+theta)*(1.3E1/2.0E1)+q1dot*thetadot*sin(q1+theta)*(1.3E1/2.0E1)+sqrt(4.1E1)*q1dot*q2dot*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q1dot*q3dot*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q2dot*q3dot*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q1dot*thetadot*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q2dot*thetadot*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q3dot*thetadot*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1);
-  T(1,0) = (q1dot*q1dot)*cos(q1+q2+theta)*(1.3E1/4.0E1)+(q2dot*q2dot)*cos(q1+q2+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*cos(q1+q2+theta)*(1.3E1/4.0E1)+(q1dot*q1dot)*cos(q1+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*cos(q1+theta)*(1.3E1/4.0E1)+sqrt(4.1E1)*(q1dot*q1dot)*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(q2dot*q2dot)*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(q3dot*q3dot)*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(thetadot*thetadot)*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/4.0E1)+q1dot*q2dot*cos(q1+q2+theta)*(1.3E1/2.0E1)+q1dot*thetadot*cos(q1+q2+theta)*(1.3E1/2.0E1)+q2dot*thetadot*cos(q1+q2+theta)*(1.3E1/2.0E1)+q1dot*thetadot*cos(q1+theta)*(1.3E1/2.0E1)+sqrt(4.1E1)*q1dot*q2dot*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q1dot*q3dot*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q2dot*q3dot*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q1dot*thetadot*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q2dot*thetadot*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q3dot*thetadot*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1);
-  T(2,0) = (q1dot*q1dot)*sin(q1+q2+theta)*(1.3E1/4.0E1)+(q2dot*q2dot)*sin(q1+q2+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*sin(q1+q2+theta)*(1.3E1/4.0E1)+(q1dot*q1dot)*cos(q1+q2+q3+theta)*(1.0/1.0E1)+(q2dot*q2dot)*cos(q1+q2+q3+theta)*(1.0/1.0E1)+(q3dot*q3dot)*cos(q1+q2+q3+theta)*(1.0/1.0E1)+(thetadot*thetadot)*cos(q1+q2+q3+theta)*(1.0/1.0E1)+(q1dot*q1dot)*sin(q1+q2+q3+theta)*(1.0/1.0E1)+(q2dot*q2dot)*sin(q1+q2+q3+theta)*(1.0/1.0E1)+(q3dot*q3dot)*sin(q1+q2+q3+theta)*(1.0/1.0E1)+(thetadot*thetadot)*sin(q1+q2+q3+theta)*(1.0/1.0E1)+(q1dot*q1dot)*sin(q1+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*sin(q1+theta)*(1.3E1/4.0E1)+q1dot*q2dot*sin(q1+q2+theta)*(1.3E1/2.0E1)+q1dot*thetadot*sin(q1+q2+theta)*(1.3E1/2.0E1)+q2dot*thetadot*sin(q1+q2+theta)*(1.3E1/2.0E1)+q1dot*q2dot*cos(q1+q2+q3+theta)*(1.0/5.0)+q1dot*q3dot*cos(q1+q2+q3+theta)*(1.0/5.0)+q2dot*q3dot*cos(q1+q2+q3+theta)*(1.0/5.0)+q1dot*thetadot*cos(q1+q2+q3+theta)*(1.0/5.0)+q2dot*thetadot*cos(q1+q2+q3+theta)*(1.0/5.0)+q3dot*thetadot*cos(q1+q2+q3+theta)*(1.0/5.0)+q1dot*q2dot*sin(q1+q2+q3+theta)*(1.0/5.0)+q1dot*q3dot*sin(q1+q2+q3+theta)*(1.0/5.0)+q2dot*q3dot*sin(q1+q2+q3+theta)*(1.0/5.0)+q1dot*thetadot*sin(q1+q2+q3+theta)*(1.0/5.0)+q2dot*thetadot*sin(q1+q2+q3+theta)*(1.0/5.0)+q3dot*thetadot*sin(q1+q2+q3+theta)*(1.0/5.0)+q1dot*thetadot*sin(q1+theta)*(1.3E1/2.0E1);
-  T(3,0) = (q1dot*q1dot)*cos(q1+q2+theta)*(1.3E1/4.0E1)+(q2dot*q2dot)*cos(q1+q2+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*cos(q1+q2+theta)*(1.3E1/4.0E1)+(q1dot*q1dot)*cos(q1+q2+q3+theta)*(1.0/1.0E1)+(q2dot*q2dot)*cos(q1+q2+q3+theta)*(1.0/1.0E1)+(q3dot*q3dot)*cos(q1+q2+q3+theta)*(1.0/1.0E1)+(thetadot*thetadot)*cos(q1+q2+q3+theta)*(1.0/1.0E1)-(q1dot*q1dot)*sin(q1+q2+q3+theta)*(1.0/1.0E1)-(q2dot*q2dot)*sin(q1+q2+q3+theta)*(1.0/1.0E1)-(q3dot*q3dot)*sin(q1+q2+q3+theta)*(1.0/1.0E1)-(thetadot*thetadot)*sin(q1+q2+q3+theta)*(1.0/1.0E1)+(q1dot*q1dot)*cos(q1+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*cos(q1+theta)*(1.3E1/4.0E1)+q1dot*q2dot*cos(q1+q2+theta)*(1.3E1/2.0E1)+q1dot*thetadot*cos(q1+q2+theta)*(1.3E1/2.0E1)+q2dot*thetadot*cos(q1+q2+theta)*(1.3E1/2.0E1)+q1dot*q2dot*cos(q1+q2+q3+theta)*(1.0/5.0)+q1dot*q3dot*cos(q1+q2+q3+theta)*(1.0/5.0)+q2dot*q3dot*cos(q1+q2+q3+theta)*(1.0/5.0)+q1dot*thetadot*cos(q1+q2+q3+theta)*(1.0/5.0)+q2dot*thetadot*cos(q1+q2+q3+theta)*(1.0/5.0)+q3dot*thetadot*cos(q1+q2+q3+theta)*(1.0/5.0)-q1dot*q2dot*sin(q1+q2+q3+theta)*(1.0/5.0)-q1dot*q3dot*sin(q1+q2+q3+theta)*(1.0/5.0)-q2dot*q3dot*sin(q1+q2+q3+theta)*(1.0/5.0)-q1dot*thetadot*sin(q1+q2+q3+theta)*(1.0/5.0)-q2dot*thetadot*sin(q1+q2+q3+theta)*(1.0/5.0)-q3dot*thetadot*sin(q1+q2+q3+theta)*(1.0/5.0)+q1dot*thetadot*cos(q1+theta)*(1.3E1/2.0E1);
-  T(4,0) = (q4dot*q4dot)*sin(q4+q5+theta)*(1.3E1/4.0E1)+(q5dot*q5dot)*sin(q4+q5+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*sin(q4+q5+theta)*(1.3E1/4.0E1)+(q4dot*q4dot)*sin(q4+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*sin(q4+theta)*(1.3E1/4.0E1)+sqrt(4.1E1)*(q4dot*q4dot)*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(q5dot*q5dot)*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(q6dot*q6dot)*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(thetadot*thetadot)*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/4.0E1)+q4dot*q5dot*sin(q4+q5+theta)*(1.3E1/2.0E1)+q4dot*thetadot*sin(q4+q5+theta)*(1.3E1/2.0E1)+q5dot*thetadot*sin(q4+q5+theta)*(1.3E1/2.0E1)+q4dot*thetadot*sin(q4+theta)*(1.3E1/2.0E1)+sqrt(4.1E1)*q4dot*q5dot*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q4dot*q6dot*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q5dot*q6dot*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q4dot*thetadot*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q5dot*thetadot*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q6dot*thetadot*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1);
-  T(5,0) = (q4dot*q4dot)*cos(q4+q5+theta)*(1.3E1/4.0E1)+(q5dot*q5dot)*cos(q4+q5+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*cos(q4+q5+theta)*(1.3E1/4.0E1)+(q4dot*q4dot)*cos(q4+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*cos(q4+theta)*(1.3E1/4.0E1)+sqrt(4.1E1)*(q4dot*q4dot)*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(q5dot*q5dot)*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(q6dot*q6dot)*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(thetadot*thetadot)*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/4.0E1)+q4dot*q5dot*cos(q4+q5+theta)*(1.3E1/2.0E1)+q4dot*thetadot*cos(q4+q5+theta)*(1.3E1/2.0E1)+q5dot*thetadot*cos(q4+q5+theta)*(1.3E1/2.0E1)+q4dot*thetadot*cos(q4+theta)*(1.3E1/2.0E1)+sqrt(4.1E1)*q4dot*q5dot*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q4dot*q6dot*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q5dot*q6dot*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q4dot*thetadot*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q5dot*thetadot*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q6dot*thetadot*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1);
-  T(6,0) = (q4dot*q4dot)*sin(q4+q5+theta)*(1.3E1/4.0E1)+(q5dot*q5dot)*sin(q4+q5+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*sin(q4+q5+theta)*(1.3E1/4.0E1)+(q4dot*q4dot)*cos(q4+q5+q6+theta)*(1.0/1.0E1)+(q5dot*q5dot)*cos(q4+q5+q6+theta)*(1.0/1.0E1)+(q6dot*q6dot)*cos(q4+q5+q6+theta)*(1.0/1.0E1)+(thetadot*thetadot)*cos(q4+q5+q6+theta)*(1.0/1.0E1)+(q4dot*q4dot)*sin(q4+q5+q6+theta)*(1.0/1.0E1)+(q5dot*q5dot)*sin(q4+q5+q6+theta)*(1.0/1.0E1)+(q6dot*q6dot)*sin(q4+q5+q6+theta)*(1.0/1.0E1)+(thetadot*thetadot)*sin(q4+q5+q6+theta)*(1.0/1.0E1)+(q4dot*q4dot)*sin(q4+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*sin(q4+theta)*(1.3E1/4.0E1)+q4dot*q5dot*sin(q4+q5+theta)*(1.3E1/2.0E1)+q4dot*thetadot*sin(q4+q5+theta)*(1.3E1/2.0E1)+q5dot*thetadot*sin(q4+q5+theta)*(1.3E1/2.0E1)+q4dot*q5dot*cos(q4+q5+q6+theta)*(1.0/5.0)+q4dot*q6dot*cos(q4+q5+q6+theta)*(1.0/5.0)+q5dot*q6dot*cos(q4+q5+q6+theta)*(1.0/5.0)+q4dot*thetadot*cos(q4+q5+q6+theta)*(1.0/5.0)+q5dot*thetadot*cos(q4+q5+q6+theta)*(1.0/5.0)+q6dot*thetadot*cos(q4+q5+q6+theta)*(1.0/5.0)+q4dot*q5dot*sin(q4+q5+q6+theta)*(1.0/5.0)+q4dot*q6dot*sin(q4+q5+q6+theta)*(1.0/5.0)+q5dot*q6dot*sin(q4+q5+q6+theta)*(1.0/5.0)+q4dot*thetadot*sin(q4+q5+q6+theta)*(1.0/5.0)+q5dot*thetadot*sin(q4+q5+q6+theta)*(1.0/5.0)+q6dot*thetadot*sin(q4+q5+q6+theta)*(1.0/5.0)+q4dot*thetadot*sin(q4+theta)*(1.3E1/2.0E1);
-  T(7,0) = (q4dot*q4dot)*cos(q4+q5+theta)*(1.3E1/4.0E1)+(q5dot*q5dot)*cos(q4+q5+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*cos(q4+q5+theta)*(1.3E1/4.0E1)+(q4dot*q4dot)*cos(q4+q5+q6+theta)*(1.0/1.0E1)+(q5dot*q5dot)*cos(q4+q5+q6+theta)*(1.0/1.0E1)+(q6dot*q6dot)*cos(q4+q5+q6+theta)*(1.0/1.0E1)+(thetadot*thetadot)*cos(q4+q5+q6+theta)*(1.0/1.0E1)-(q4dot*q4dot)*sin(q4+q5+q6+theta)*(1.0/1.0E1)-(q5dot*q5dot)*sin(q4+q5+q6+theta)*(1.0/1.0E1)-(q6dot*q6dot)*sin(q4+q5+q6+theta)*(1.0/1.0E1)-(thetadot*thetadot)*sin(q4+q5+q6+theta)*(1.0/1.0E1)+(q4dot*q4dot)*cos(q4+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*cos(q4+theta)*(1.3E1/4.0E1)+q4dot*q5dot*cos(q4+q5+theta)*(1.3E1/2.0E1)+q4dot*thetadot*cos(q4+q5+theta)*(1.3E1/2.0E1)+q5dot*thetadot*cos(q4+q5+theta)*(1.3E1/2.0E1)+q4dot*q5dot*cos(q4+q5+q6+theta)*(1.0/5.0)+q4dot*q6dot*cos(q4+q5+q6+theta)*(1.0/5.0)+q5dot*q6dot*cos(q4+q5+q6+theta)*(1.0/5.0)+q4dot*thetadot*cos(q4+q5+q6+theta)*(1.0/5.0)+q5dot*thetadot*cos(q4+q5+q6+theta)*(1.0/5.0)+q6dot*thetadot*cos(q4+q5+q6+theta)*(1.0/5.0)-q4dot*q5dot*sin(q4+q5+q6+theta)*(1.0/5.0)-q4dot*q6dot*sin(q4+q5+q6+theta)*(1.0/5.0)-q5dot*q6dot*sin(q4+q5+q6+theta)*(1.0/5.0)-q4dot*thetadot*sin(q4+q5+q6+theta)*(1.0/5.0)-q5dot*thetadot*sin(q4+q5+q6+theta)*(1.0/5.0)-q6dot*thetadot*sin(q4+q5+q6+theta)*(1.0/5.0)+q4dot*thetadot*cos(q4+theta)*(1.3E1/2.0E1);
-  T(8,0) = (thetadot*thetadot)*sin(theta)*(-1.1E1/2.0E1)+(q7dot*q7dot)*sin(q7+q8+theta)*(9.0/2.0E1)+(q8dot*q8dot)*sin(q7+q8+theta)*(9.0/2.0E1)+(thetadot*thetadot)*sin(q7+q8+theta)*(9.0/2.0E1)+(q7dot*q7dot)*sin(q7+theta)*(1.0/4.0)+(thetadot*thetadot)*sin(q7+theta)*(1.0/4.0)+q7dot*q8dot*sin(q7+q8+theta)*(9.0/1.0E1)+q7dot*thetadot*sin(q7+q8+theta)*(9.0/1.0E1)+q8dot*thetadot*sin(q7+q8+theta)*(9.0/1.0E1)+q7dot*thetadot*sin(q7+theta)*(1.0/2.0);
-  T(9,0) = (thetadot*thetadot)*cos(theta)*(-1.1E1/2.0E1)+(q7dot*q7dot)*cos(q7+q8+theta)*(9.0/2.0E1)+(q8dot*q8dot)*cos(q7+q8+theta)*(9.0/2.0E1)+(thetadot*thetadot)*cos(q7+q8+theta)*(9.0/2.0E1)+(q7dot*q7dot)*cos(q7+theta)*(1.0/4.0)+(thetadot*thetadot)*cos(q7+theta)*(1.0/4.0)+q7dot*q8dot*cos(q7+q8+theta)*(9.0/1.0E1)+q7dot*thetadot*cos(q7+q8+theta)*(9.0/1.0E1)+q8dot*thetadot*cos(q7+q8+theta)*(9.0/1.0E1)+q7dot*thetadot*cos(q7+theta)*(1.0/2.0);
-  T(10,0) = (thetadot*thetadot)*sin(theta)*(-1.1E1/2.0E1)+(q10dot*q10dot)*sin(q9+q10+theta)*(9.0/2.0E1)+(q9dot*q9dot)*sin(q9+q10+theta)*(9.0/2.0E1)+(thetadot*thetadot)*sin(q9+q10+theta)*(9.0/2.0E1)+(q9dot*q9dot)*sin(q9+theta)*(1.0/4.0)+(thetadot*thetadot)*sin(q9+theta)*(1.0/4.0)+q10dot*q9dot*sin(q9+q10+theta)*(9.0/1.0E1)+q10dot*thetadot*sin(q9+q10+theta)*(9.0/1.0E1)+q9dot*thetadot*sin(q9+q10+theta)*(9.0/1.0E1)+q9dot*thetadot*sin(q9+theta)*(1.0/2.0);
-  T(11,0) = (thetadot*thetadot)*cos(theta)*(-1.1E1/2.0E1)+(q10dot*q10dot)*cos(q9+q10+theta)*(9.0/2.0E1)+(q9dot*q9dot)*cos(q9+q10+theta)*(9.0/2.0E1)+(thetadot*thetadot)*cos(q9+q10+theta)*(9.0/2.0E1)+(q9dot*q9dot)*cos(q9+theta)*(1.0/4.0)+(thetadot*thetadot)*cos(q9+theta)*(1.0/4.0)+q10dot*q9dot*cos(q9+q10+theta)*(9.0/1.0E1)+q10dot*thetadot*cos(q9+q10+theta)*(9.0/1.0E1)+q9dot*thetadot*cos(q9+q10+theta)*(9.0/1.0E1)+q9dot*thetadot*cos(q9+theta)*(1.0/2.0);
-
-  return T;
-}
+// dlib::matrix<double> Jacdot_qdot_fn(const Robot_StateNDot &Robot_StateNDot_i)
+// {
+//   double rIx = Robot_StateNDot_i.rIx;					double rIy = Robot_StateNDot_i.rIy;						double theta = Robot_StateNDot_i.theta;
+//   double q1 = Robot_StateNDot_i.q1;					  double q2 = Robot_StateNDot_i.q2;						double q3 = Robot_StateNDot_i.q3;
+//   double q4 = Robot_StateNDot_i.q4;					  double q5 = Robot_StateNDot_i.q5;						double q6 = Robot_StateNDot_i.q6;
+//   double q7 = Robot_StateNDot_i.q7;					  double q8 = Robot_StateNDot_i.q8;						double q9 = Robot_StateNDot_i.q9;
+//   double q10 = Robot_StateNDot_i.q10;
+//
+//   double rIxdot = Robot_StateNDot_i.rIxdot;			double rIydot = Robot_StateNDot_i.rIydot;				double thetadot = Robot_StateNDot_i.thetadot;
+//   double q1dot = Robot_StateNDot_i.q1dot;				double q2dot = Robot_StateNDot_i.q2dot;					double q3dot = Robot_StateNDot_i.q3dot;
+//   double q4dot = Robot_StateNDot_i.q4dot;				double q5dot = Robot_StateNDot_i.q5dot;					double q6dot = Robot_StateNDot_i.q6dot;
+//   double q7dot = Robot_StateNDot_i.q7dot;				double q8dot = Robot_StateNDot_i.q8dot;					double q9dot = Robot_StateNDot_i.q9dot;
+//   double q10dot = Robot_StateNDot_i.q10dot;
+//
+//   dlib::matrix<double> T;
+//   T = dlib::zeros_matrix<double>(13,1);
+//
+//   T(0,0) = (q1dot*q1dot)*sin(q1+q2+theta)*(1.3E1/4.0E1)+(q2dot*q2dot)*sin(q1+q2+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*sin(q1+q2+theta)*(1.3E1/4.0E1)+(q1dot*q1dot)*sin(q1+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*sin(q1+theta)*(1.3E1/4.0E1)+sqrt(4.1E1)*(q1dot*q1dot)*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(q2dot*q2dot)*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(q3dot*q3dot)*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(thetadot*thetadot)*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/4.0E1)+q1dot*q2dot*sin(q1+q2+theta)*(1.3E1/2.0E1)+q1dot*thetadot*sin(q1+q2+theta)*(1.3E1/2.0E1)+q2dot*thetadot*sin(q1+q2+theta)*(1.3E1/2.0E1)+q1dot*thetadot*sin(q1+theta)*(1.3E1/2.0E1)+sqrt(4.1E1)*q1dot*q2dot*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q1dot*q3dot*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q2dot*q3dot*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q1dot*thetadot*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q2dot*thetadot*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q3dot*thetadot*sin(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1);
+//   T(1,0) = (q1dot*q1dot)*cos(q1+q2+theta)*(1.3E1/4.0E1)+(q2dot*q2dot)*cos(q1+q2+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*cos(q1+q2+theta)*(1.3E1/4.0E1)+(q1dot*q1dot)*cos(q1+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*cos(q1+theta)*(1.3E1/4.0E1)+sqrt(4.1E1)*(q1dot*q1dot)*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(q2dot*q2dot)*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(q3dot*q3dot)*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(thetadot*thetadot)*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/4.0E1)+q1dot*q2dot*cos(q1+q2+theta)*(1.3E1/2.0E1)+q1dot*thetadot*cos(q1+q2+theta)*(1.3E1/2.0E1)+q2dot*thetadot*cos(q1+q2+theta)*(1.3E1/2.0E1)+q1dot*thetadot*cos(q1+theta)*(1.3E1/2.0E1)+sqrt(4.1E1)*q1dot*q2dot*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q1dot*q3dot*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q2dot*q3dot*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q1dot*thetadot*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q2dot*thetadot*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q3dot*thetadot*cos(q1+q2+q3+theta-8.960553845713439E-1)*(1.0/2.0E1);
+//   T(2,0) = (q1dot*q1dot)*sin(q1+q2+theta)*(1.3E1/4.0E1)+(q2dot*q2dot)*sin(q1+q2+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*sin(q1+q2+theta)*(1.3E1/4.0E1)+(q1dot*q1dot)*cos(q1+q2+q3+theta)*(1.0/1.0E1)+(q2dot*q2dot)*cos(q1+q2+q3+theta)*(1.0/1.0E1)+(q3dot*q3dot)*cos(q1+q2+q3+theta)*(1.0/1.0E1)+(thetadot*thetadot)*cos(q1+q2+q3+theta)*(1.0/1.0E1)+(q1dot*q1dot)*sin(q1+q2+q3+theta)*(1.0/1.0E1)+(q2dot*q2dot)*sin(q1+q2+q3+theta)*(1.0/1.0E1)+(q3dot*q3dot)*sin(q1+q2+q3+theta)*(1.0/1.0E1)+(thetadot*thetadot)*sin(q1+q2+q3+theta)*(1.0/1.0E1)+(q1dot*q1dot)*sin(q1+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*sin(q1+theta)*(1.3E1/4.0E1)+q1dot*q2dot*sin(q1+q2+theta)*(1.3E1/2.0E1)+q1dot*thetadot*sin(q1+q2+theta)*(1.3E1/2.0E1)+q2dot*thetadot*sin(q1+q2+theta)*(1.3E1/2.0E1)+q1dot*q2dot*cos(q1+q2+q3+theta)*(1.0/5.0)+q1dot*q3dot*cos(q1+q2+q3+theta)*(1.0/5.0)+q2dot*q3dot*cos(q1+q2+q3+theta)*(1.0/5.0)+q1dot*thetadot*cos(q1+q2+q3+theta)*(1.0/5.0)+q2dot*thetadot*cos(q1+q2+q3+theta)*(1.0/5.0)+q3dot*thetadot*cos(q1+q2+q3+theta)*(1.0/5.0)+q1dot*q2dot*sin(q1+q2+q3+theta)*(1.0/5.0)+q1dot*q3dot*sin(q1+q2+q3+theta)*(1.0/5.0)+q2dot*q3dot*sin(q1+q2+q3+theta)*(1.0/5.0)+q1dot*thetadot*sin(q1+q2+q3+theta)*(1.0/5.0)+q2dot*thetadot*sin(q1+q2+q3+theta)*(1.0/5.0)+q3dot*thetadot*sin(q1+q2+q3+theta)*(1.0/5.0)+q1dot*thetadot*sin(q1+theta)*(1.3E1/2.0E1);
+//   T(3,0) = (q1dot*q1dot)*cos(q1+q2+theta)*(1.3E1/4.0E1)+(q2dot*q2dot)*cos(q1+q2+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*cos(q1+q2+theta)*(1.3E1/4.0E1)+(q1dot*q1dot)*cos(q1+q2+q3+theta)*(1.0/1.0E1)+(q2dot*q2dot)*cos(q1+q2+q3+theta)*(1.0/1.0E1)+(q3dot*q3dot)*cos(q1+q2+q3+theta)*(1.0/1.0E1)+(thetadot*thetadot)*cos(q1+q2+q3+theta)*(1.0/1.0E1)-(q1dot*q1dot)*sin(q1+q2+q3+theta)*(1.0/1.0E1)-(q2dot*q2dot)*sin(q1+q2+q3+theta)*(1.0/1.0E1)-(q3dot*q3dot)*sin(q1+q2+q3+theta)*(1.0/1.0E1)-(thetadot*thetadot)*sin(q1+q2+q3+theta)*(1.0/1.0E1)+(q1dot*q1dot)*cos(q1+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*cos(q1+theta)*(1.3E1/4.0E1)+q1dot*q2dot*cos(q1+q2+theta)*(1.3E1/2.0E1)+q1dot*thetadot*cos(q1+q2+theta)*(1.3E1/2.0E1)+q2dot*thetadot*cos(q1+q2+theta)*(1.3E1/2.0E1)+q1dot*q2dot*cos(q1+q2+q3+theta)*(1.0/5.0)+q1dot*q3dot*cos(q1+q2+q3+theta)*(1.0/5.0)+q2dot*q3dot*cos(q1+q2+q3+theta)*(1.0/5.0)+q1dot*thetadot*cos(q1+q2+q3+theta)*(1.0/5.0)+q2dot*thetadot*cos(q1+q2+q3+theta)*(1.0/5.0)+q3dot*thetadot*cos(q1+q2+q3+theta)*(1.0/5.0)-q1dot*q2dot*sin(q1+q2+q3+theta)*(1.0/5.0)-q1dot*q3dot*sin(q1+q2+q3+theta)*(1.0/5.0)-q2dot*q3dot*sin(q1+q2+q3+theta)*(1.0/5.0)-q1dot*thetadot*sin(q1+q2+q3+theta)*(1.0/5.0)-q2dot*thetadot*sin(q1+q2+q3+theta)*(1.0/5.0)-q3dot*thetadot*sin(q1+q2+q3+theta)*(1.0/5.0)+q1dot*thetadot*cos(q1+theta)*(1.3E1/2.0E1);
+//   T(4,0) = (q4dot*q4dot)*sin(q4+q5+theta)*(1.3E1/4.0E1)+(q5dot*q5dot)*sin(q4+q5+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*sin(q4+q5+theta)*(1.3E1/4.0E1)+(q4dot*q4dot)*sin(q4+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*sin(q4+theta)*(1.3E1/4.0E1)+sqrt(4.1E1)*(q4dot*q4dot)*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(q5dot*q5dot)*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(q6dot*q6dot)*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(thetadot*thetadot)*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/4.0E1)+q4dot*q5dot*sin(q4+q5+theta)*(1.3E1/2.0E1)+q4dot*thetadot*sin(q4+q5+theta)*(1.3E1/2.0E1)+q5dot*thetadot*sin(q4+q5+theta)*(1.3E1/2.0E1)+q4dot*thetadot*sin(q4+theta)*(1.3E1/2.0E1)+sqrt(4.1E1)*q4dot*q5dot*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q4dot*q6dot*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q5dot*q6dot*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q4dot*thetadot*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q5dot*thetadot*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q6dot*thetadot*sin(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1);
+//   T(5,0) = (q4dot*q4dot)*cos(q4+q5+theta)*(1.3E1/4.0E1)+(q5dot*q5dot)*cos(q4+q5+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*cos(q4+q5+theta)*(1.3E1/4.0E1)+(q4dot*q4dot)*cos(q4+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*cos(q4+theta)*(1.3E1/4.0E1)+sqrt(4.1E1)*(q4dot*q4dot)*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(q5dot*q5dot)*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(q6dot*q6dot)*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/4.0E1)+sqrt(4.1E1)*(thetadot*thetadot)*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/4.0E1)+q4dot*q5dot*cos(q4+q5+theta)*(1.3E1/2.0E1)+q4dot*thetadot*cos(q4+q5+theta)*(1.3E1/2.0E1)+q5dot*thetadot*cos(q4+q5+theta)*(1.3E1/2.0E1)+q4dot*thetadot*cos(q4+theta)*(1.3E1/2.0E1)+sqrt(4.1E1)*q4dot*q5dot*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q4dot*q6dot*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q5dot*q6dot*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q4dot*thetadot*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q5dot*thetadot*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1)+sqrt(4.1E1)*q6dot*thetadot*cos(q4+q5+q6+theta-8.960553845713439E-1)*(1.0/2.0E1);
+//   T(6,0) = (q4dot*q4dot)*sin(q4+q5+theta)*(1.3E1/4.0E1)+(q5dot*q5dot)*sin(q4+q5+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*sin(q4+q5+theta)*(1.3E1/4.0E1)+(q4dot*q4dot)*cos(q4+q5+q6+theta)*(1.0/1.0E1)+(q5dot*q5dot)*cos(q4+q5+q6+theta)*(1.0/1.0E1)+(q6dot*q6dot)*cos(q4+q5+q6+theta)*(1.0/1.0E1)+(thetadot*thetadot)*cos(q4+q5+q6+theta)*(1.0/1.0E1)+(q4dot*q4dot)*sin(q4+q5+q6+theta)*(1.0/1.0E1)+(q5dot*q5dot)*sin(q4+q5+q6+theta)*(1.0/1.0E1)+(q6dot*q6dot)*sin(q4+q5+q6+theta)*(1.0/1.0E1)+(thetadot*thetadot)*sin(q4+q5+q6+theta)*(1.0/1.0E1)+(q4dot*q4dot)*sin(q4+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*sin(q4+theta)*(1.3E1/4.0E1)+q4dot*q5dot*sin(q4+q5+theta)*(1.3E1/2.0E1)+q4dot*thetadot*sin(q4+q5+theta)*(1.3E1/2.0E1)+q5dot*thetadot*sin(q4+q5+theta)*(1.3E1/2.0E1)+q4dot*q5dot*cos(q4+q5+q6+theta)*(1.0/5.0)+q4dot*q6dot*cos(q4+q5+q6+theta)*(1.0/5.0)+q5dot*q6dot*cos(q4+q5+q6+theta)*(1.0/5.0)+q4dot*thetadot*cos(q4+q5+q6+theta)*(1.0/5.0)+q5dot*thetadot*cos(q4+q5+q6+theta)*(1.0/5.0)+q6dot*thetadot*cos(q4+q5+q6+theta)*(1.0/5.0)+q4dot*q5dot*sin(q4+q5+q6+theta)*(1.0/5.0)+q4dot*q6dot*sin(q4+q5+q6+theta)*(1.0/5.0)+q5dot*q6dot*sin(q4+q5+q6+theta)*(1.0/5.0)+q4dot*thetadot*sin(q4+q5+q6+theta)*(1.0/5.0)+q5dot*thetadot*sin(q4+q5+q6+theta)*(1.0/5.0)+q6dot*thetadot*sin(q4+q5+q6+theta)*(1.0/5.0)+q4dot*thetadot*sin(q4+theta)*(1.3E1/2.0E1);
+//   T(7,0) = (q4dot*q4dot)*cos(q4+q5+theta)*(1.3E1/4.0E1)+(q5dot*q5dot)*cos(q4+q5+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*cos(q4+q5+theta)*(1.3E1/4.0E1)+(q4dot*q4dot)*cos(q4+q5+q6+theta)*(1.0/1.0E1)+(q5dot*q5dot)*cos(q4+q5+q6+theta)*(1.0/1.0E1)+(q6dot*q6dot)*cos(q4+q5+q6+theta)*(1.0/1.0E1)+(thetadot*thetadot)*cos(q4+q5+q6+theta)*(1.0/1.0E1)-(q4dot*q4dot)*sin(q4+q5+q6+theta)*(1.0/1.0E1)-(q5dot*q5dot)*sin(q4+q5+q6+theta)*(1.0/1.0E1)-(q6dot*q6dot)*sin(q4+q5+q6+theta)*(1.0/1.0E1)-(thetadot*thetadot)*sin(q4+q5+q6+theta)*(1.0/1.0E1)+(q4dot*q4dot)*cos(q4+theta)*(1.3E1/4.0E1)+(thetadot*thetadot)*cos(q4+theta)*(1.3E1/4.0E1)+q4dot*q5dot*cos(q4+q5+theta)*(1.3E1/2.0E1)+q4dot*thetadot*cos(q4+q5+theta)*(1.3E1/2.0E1)+q5dot*thetadot*cos(q4+q5+theta)*(1.3E1/2.0E1)+q4dot*q5dot*cos(q4+q5+q6+theta)*(1.0/5.0)+q4dot*q6dot*cos(q4+q5+q6+theta)*(1.0/5.0)+q5dot*q6dot*cos(q4+q5+q6+theta)*(1.0/5.0)+q4dot*thetadot*cos(q4+q5+q6+theta)*(1.0/5.0)+q5dot*thetadot*cos(q4+q5+q6+theta)*(1.0/5.0)+q6dot*thetadot*cos(q4+q5+q6+theta)*(1.0/5.0)-q4dot*q5dot*sin(q4+q5+q6+theta)*(1.0/5.0)-q4dot*q6dot*sin(q4+q5+q6+theta)*(1.0/5.0)-q5dot*q6dot*sin(q4+q5+q6+theta)*(1.0/5.0)-q4dot*thetadot*sin(q4+q5+q6+theta)*(1.0/5.0)-q5dot*thetadot*sin(q4+q5+q6+theta)*(1.0/5.0)-q6dot*thetadot*sin(q4+q5+q6+theta)*(1.0/5.0)+q4dot*thetadot*cos(q4+theta)*(1.3E1/2.0E1);
+//   T(8,0) = (thetadot*thetadot)*sin(theta)*(-1.1E1/2.0E1)+(q7dot*q7dot)*sin(q7+q8+theta)*(9.0/2.0E1)+(q8dot*q8dot)*sin(q7+q8+theta)*(9.0/2.0E1)+(thetadot*thetadot)*sin(q7+q8+theta)*(9.0/2.0E1)+(q7dot*q7dot)*sin(q7+theta)*(1.0/4.0)+(thetadot*thetadot)*sin(q7+theta)*(1.0/4.0)+q7dot*q8dot*sin(q7+q8+theta)*(9.0/1.0E1)+q7dot*thetadot*sin(q7+q8+theta)*(9.0/1.0E1)+q8dot*thetadot*sin(q7+q8+theta)*(9.0/1.0E1)+q7dot*thetadot*sin(q7+theta)*(1.0/2.0);
+//   T(9,0) = (thetadot*thetadot)*cos(theta)*(-1.1E1/2.0E1)+(q7dot*q7dot)*cos(q7+q8+theta)*(9.0/2.0E1)+(q8dot*q8dot)*cos(q7+q8+theta)*(9.0/2.0E1)+(thetadot*thetadot)*cos(q7+q8+theta)*(9.0/2.0E1)+(q7dot*q7dot)*cos(q7+theta)*(1.0/4.0)+(thetadot*thetadot)*cos(q7+theta)*(1.0/4.0)+q7dot*q8dot*cos(q7+q8+theta)*(9.0/1.0E1)+q7dot*thetadot*cos(q7+q8+theta)*(9.0/1.0E1)+q8dot*thetadot*cos(q7+q8+theta)*(9.0/1.0E1)+q7dot*thetadot*cos(q7+theta)*(1.0/2.0);
+//   T(10,0) = (thetadot*thetadot)*sin(theta)*(-1.1E1/2.0E1)+(q10dot*q10dot)*sin(q9+q10+theta)*(9.0/2.0E1)+(q9dot*q9dot)*sin(q9+q10+theta)*(9.0/2.0E1)+(thetadot*thetadot)*sin(q9+q10+theta)*(9.0/2.0E1)+(q9dot*q9dot)*sin(q9+theta)*(1.0/4.0)+(thetadot*thetadot)*sin(q9+theta)*(1.0/4.0)+q10dot*q9dot*sin(q9+q10+theta)*(9.0/1.0E1)+q10dot*thetadot*sin(q9+q10+theta)*(9.0/1.0E1)+q9dot*thetadot*sin(q9+q10+theta)*(9.0/1.0E1)+q9dot*thetadot*sin(q9+theta)*(1.0/2.0);
+//   T(11,0) = (thetadot*thetadot)*cos(theta)*(-1.1E1/2.0E1)+(q10dot*q10dot)*cos(q9+q10+theta)*(9.0/2.0E1)+(q9dot*q9dot)*cos(q9+q10+theta)*(9.0/2.0E1)+(thetadot*thetadot)*cos(q9+q10+theta)*(9.0/2.0E1)+(q9dot*q9dot)*cos(q9+theta)*(1.0/4.0)+(thetadot*thetadot)*cos(q9+theta)*(1.0/4.0)+q10dot*q9dot*cos(q9+q10+theta)*(9.0/1.0E1)+q10dot*thetadot*cos(q9+q10+theta)*(9.0/1.0E1)+q9dot*thetadot*cos(q9+q10+theta)*(9.0/1.0E1)+q9dot*thetadot*cos(q9+theta)*(1.0/2.0);
+//
+//   return T;
+// }
 
 std::vector<double> Ang_Pos_fn(const Robot_StateNDot &Robot_StateNDot_i, const char* s)
 {
@@ -1206,9 +1211,9 @@ void Node_UpdateNCon(Tree_Node &Node_i, Robot_StateNDot &Node_StateNDot_i, std::
 double Nodes_Optimization_ObjNConstraint(std::vector<double> &Opt_Seed, std::vector<double> &ObjNConstraint_Val, std::vector<double> &ObjNConstraint_Type)
 {
   // This function is the main optimization constraint function
-  double T_tot, T;										dlib::matrix<double> StateNDot_Traj, Ctrl_Traj, Contact_Force_Traj, Contact_Force_Mid_Traj;
+  double T_tot, T, KE_End;;										dlib::matrix<double> StateNDot_Traj, Ctrl_Traj, Contact_Force_Traj;
 
-  Opt_Seed_Unzip(Opt_Seed, T_tot, StateNDot_Traj, Ctrl_Traj, Contact_Force_Traj, Contact_Force_Mid_Traj);
+  Opt_Seed_Unzip(Opt_Seed, T_tot, StateNDot_Traj, Ctrl_Traj, Contact_Force_Traj);
 
   T = T_tot/(Grids - 1) * 1.0;
 
@@ -1261,17 +1266,17 @@ double Nodes_Optimization_ObjNConstraint(std::vector<double> &Opt_Seed, std::vec
     // First is to compute the robot state at the middle and the derivative at the middle
     Robostate_Dlib_Mid = 0.5 * (Robostatedot_Front + Robostate_Dlib_Back) + T/8.0 * (Robostatedot_Front - Robostatedot_Back);
     Ctrl_Mid = 0.5 * (Ctrl_Front + Ctrl_Back);
-    Contact_Force_Mid = dlib::colm(Contact_Force_Mid_Traj, i);
+    Contact_Force_Mid = 0.5 * (Contact_Force_Front + Contact_Force_Back);
     Robostatedot_Mid =    State_Ctrl_CF_2_Statedot(Robostate_Dlib_Mid,    Contact_Force_Mid,    Ctrl_Mid);
 
     // Second is to impose the numerical integration constraint
     Matrix_result = Robostate_Dlib_Back - Robostate_Dlib_Front - T/6.0 * (Robostatedot_Front + 4 * Robostatedot_Mid + Robostatedot_Back);
     ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 0);
 
-    // Third is the manifold constraint on the acceleration since it is convenient to impose this constraint here
-    // Here the constraint on the last part will be taken care of individually
-    Matrix_result = Contact_Acc_Constraint(Robostate_Dlib_Front, Robostatedot_Front, Contact_Active_Matrix);
-    ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 0);
+    // // Third is the manifold constraint on the acceleration since it is convenient to impose this constraint here
+    // // Here the constraint on the last part will be taken care of individually
+    // Matrix_result = Contact_Acc_Constraint(Robostate_Dlib_Front, Robostatedot_Front, Contact_Active_Matrix);
+    // ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 0);
 
     // Last is the constraint on the change of state based on the integration of velocity and acceleration bounds
     for (int ss = 3; ss < 13; ss++)
@@ -1300,7 +1305,7 @@ double Nodes_Optimization_ObjNConstraint(std::vector<double> &Opt_Seed, std::vec
     // }
   }
 
-  // 3. Contact manifold constraints on position, velocty and acceleration
+  // 3. Contact manifold constraints on position and velocty
 
   dlib::matrix<double,12,1> End_Effector_Pos, End_Effector_Vel;			            // Reservered for the constraint on the position and velocity
 
@@ -1341,7 +1346,8 @@ double Nodes_Optimization_ObjNConstraint(std::vector<double> &Opt_Seed, std::vec
 
   if (Opt_Type_Flag==0)
   {
-    // This is the self-stabilizing process, so the contact constraint will be added in both the position, velocity and acceleration
+    // This is the self-stabilizing process, so the contact constraint will be added in both the position, and velocity
+
     Pos_Maint_Constrait = End_Effector_Pos - End_Effector_Pos_ref;
     Matrix_result = Contact_Active_Matrix * Pos_Maint_Constrait;
     ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 0);
@@ -1350,12 +1356,6 @@ double Nodes_Optimization_ObjNConstraint(std::vector<double> &Opt_Seed, std::vec
     Matrix_result = Contact_Active_Matrix * End_Effector_Vel;
     ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 0);
 
-    // Constraint on the acceleration
-    Ctrl_End = dlib::colm(Ctrl_Traj, Grids - 1);      Contact_Force_End = dlib::colm(Contact_Force_Traj, Grids - 1);
-    Robostatedot_End =  State_Ctrl_CF_2_Statedot(Robotstate_End,  Contact_Force_End,  Ctrl_End);
-
-    Matrix_result = Contact_Acc_Constraint(Robotstate_End, Robostatedot_End, Contact_Active_Matrix);
-    ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 0);
   }
   else
   {
@@ -1444,14 +1444,6 @@ double Nodes_Optimization_ObjNConstraint(std::vector<double> &Opt_Seed, std::vec
     Contact_Force_k = dlib::colm(Contact_Force_Traj,i);
     Matrix_result = Contact_Force_Complem_Matrix * Contact_Force_k;
     ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 0);
-
-    if(i<Grids-1)
-    {
-      // This is the contact force in the middle point
-      Contact_Force_k = dlib::colm(Contact_Force_Mid_Traj,i);
-      Matrix_result = Contact_Force_Complem_Matrix * Contact_Force_k;
-      ObjNConstraint_ValNType_Update(Matrix_result, ObjNConstraint_Val, ObjNConstraint_Type, 0);
-    }
   }
 
   // 5. Contact Force: Feasibility
@@ -1467,15 +1459,13 @@ double Nodes_Optimization_ObjNConstraint(std::vector<double> &Opt_Seed, std::vec
     End_Effector_Obs_k = dlib::colm(End_Effector_Obs_Index_Matrix, i);
     Contact_Force_Feasibility_fn(Contact_Force_k, End_Effector_Obs_k, ObjNConstraint_Val, ObjNConstraint_Type);
   }
-  for (int i = 0; i < Grids-1; i++)
-  {
-    Contact_Force_k = dlib::colm(Contact_Force_Mid_Traj,i);
-    End_Effector_Obs_k = dlib::colm(End_Effector_Obs_Index_Matrix, i);
-    Contact_Force_Feasibility_fn(Contact_Force_k, End_Effector_Obs_k, ObjNConstraint_Val, ObjNConstraint_Type);
-  }
+
+  // The cost function
+  KE_End = Kinetic_Energy_End_Frame(StateNDot_Traj);
+  ObjNConstraint_Val[0] = KE_End;
 
   // Here all constraints have been formulated and the cost function is written as follows.
-  double KE_End;          dlib::matrix<double> Robostate_Dlib_End;
+  dlib::matrix<double> Robostate_Dlib_End;
   if(Opt_Type_Flag == 0)
   {
     // One constraint on the acceleration for inertial shaping to be zero
@@ -1491,21 +1481,8 @@ double Nodes_Optimization_ObjNConstraint(std::vector<double> &Opt_Seed, std::vec
     Trivial_Acc_Matrix = Jac_Full_Trans_End * End_Contact_Force_Traj + B_q_End * End_Ctrl_Traj - C_q_qdot_End;
     ObjNConstraint_ValNType_Update(Trivial_Acc_Matrix, ObjNConstraint_Val, ObjNConstraint_Type, 0);
 
-    // The cost function
-    // double State_Var = Traj_Variation(StateNDot_Traj);
-
-    KE_End = Kinetic_Energy_End_Frame(StateNDot_Traj);
-    ObjNConstraint_Val[0] = KE_End;
-    // ObjNConstraint_Val[0] = State_Var;
-
-    // The desired kinetic energy is less than the threshold
     ObjNConstraint_Val.push_back(KE_ref - KE_End);
     ObjNConstraint_Type.push_back(1);
-  }
-  else
-  {
-    KE_End = Kinetic_Energy_End_Frame(StateNDot_Traj);
-    ObjNConstraint_Val[0] = KE_End;
   }
 
   double State_Var = Traj_Variation(StateNDot_Traj);
@@ -1566,24 +1543,24 @@ dlib::matrix<double> Contact_Status_fn(std::vector<double> &sigma_i)
   return Contact_Status_Matrix;
 }
 
-dlib::matrix<double> Contact_Acc_Constraint(dlib::matrix<double> &Robotstate, dlib::matrix<double> &Robotstatedot, const dlib::matrix<double> &Sigma_Matrix)
-{
-  // This function is used to calculate the constraint on the acceleration at the contact points the outpu will be a dlib::matrix
-  Robot_StateNDot Robot_StateNDot_k = DlibRobotstate2StateNDot(Robotstate);
-  dlib::matrix<double> Jacdot_qdot_k = Jacdot_qdot_fn(Robot_StateNDot_k);
-  dlib::matrix<double> Jac_Full_k = Jac_Full_fn(Robot_StateNDot_k);
-  dlib::matrix<double> qddot = dlib::ones_matrix<double>(13,1);
-
-  for (int i = 0; i < 13; i++)
-  {
-    qddot(i) = Robotstatedot(i + 13);
-  }
-  dlib::matrix<double> Matrix_result = Jacdot_qdot_k + Jac_Full_k * qddot;
-
-  Matrix_result = Sigma_Matrix * Matrix_result;
-
-  return Matrix_result;
-}
+// dlib::matrix<double> Contact_Acc_Constraint(dlib::matrix<double> &Robotstate, dlib::matrix<double> &Robotstatedot, const dlib::matrix<double> &Sigma_Matrix)
+// {
+//   // This function is used to calculate the constraint on the acceleration at the contact points the outpu will be a dlib::matrix
+//   Robot_StateNDot Robot_StateNDot_k = DlibRobotstate2StateNDot(Robotstate);
+//   dlib::matrix<double> Jacdot_qdot_k = Jacdot_qdot_fn(Robot_StateNDot_k);
+//   dlib::matrix<double> Jac_Full_k = Jac_Full_fn(Robot_StateNDot_k);
+//   dlib::matrix<double> qddot = dlib::ones_matrix<double>(13,1);
+//
+//   for (int i = 0; i < 13; i++)
+//   {
+//     qddot(i) = Robotstatedot(i + 13);
+//   }
+//   dlib::matrix<double> Matrix_result = Jacdot_qdot_k + Jac_Full_k * qddot;
+//
+//   Matrix_result = Sigma_Matrix * Matrix_result;
+//
+//   return Matrix_result;
+// }
 
 dlib::matrix<double> Diag_Matrix_fn(std::vector<double> &diag_vec)
 {
@@ -2062,8 +2039,8 @@ std::vector<double> End_RobotNDot_Extract(std::vector<double> &Opt_Soln, std::ve
 {
   // This function is used to extract the end robot state out from the Opt_Soln while conducting Impact Mapping if there exists
   double T_tot;
-  dlib::matrix<double> StateNDot_Traj, Ctrl_Traj, Contact_Force_Traj, Contact_Force_Mid_Traj;
-  Opt_Seed_Unzip(Opt_Soln, T_tot, StateNDot_Traj, Ctrl_Traj, Contact_Force_Traj, Contact_Force_Mid_Traj);
+  dlib::matrix<double> StateNDot_Traj, Ctrl_Traj, Contact_Force_Traj;
+  Opt_Seed_Unzip(Opt_Soln, T_tot, StateNDot_Traj, Ctrl_Traj, Contact_Force_Traj);
   int Opt_Type_Flag = Sigma_TransNGoal(sigma_i, sigma_i_child);
 
   std::vector<double> Robotstate_vec;
@@ -2197,17 +2174,19 @@ std::vector<double> Seed_Guess_Gene(Tree_Node &Node_i, Tree_Node &Node_i_child)
   std::vector<double> Init_Config = StateNDot2StateVec(Node_i.Node_StateNDot);
   std::vector<double> Seed_Config = Seed_Guess_Gene_Robotstate(Node_i, Node_i_child);
   const int StateNDot_len = Init_Config.size();			const int Control_len = 10;			const int Contact_Force_len = 12;
+  std::vector<double> sigma_i = Node_i.sigma;
+  std::vector<double> sigma_i_child = Node_i_child.sigma;
+  std::vector<double> sigma;
 
   dlib::matrix<double> StateNDot_Traj, Acc_Traj, StateNdot_Mid_Traj, Acc_Mid_Traj;
   StateNDot_Traj = dlib::zeros_matrix<double>(StateNDot_len, Grids);				// each variable traj will be in a row fashion
-  Acc_Traj = dlib::zeros_matrix<double>(13, Grids);				// each variable traj will be in a row fashion
+  Acc_Traj = dlib::zeros_matrix<double>(13, Grids);				                  // each variable traj will be in a row fashion
   StateNdot_Mid_Traj = dlib::zeros_matrix<double>(StateNDot_len, Grids-1);
   Acc_Mid_Traj = dlib::zeros_matrix<double>(13, Grids-1);
 
-  dlib::matrix<double> Ctrl_Traj, Contact_Force_Traj, Contact_Force_Mid_Traj;
+  dlib::matrix<double> Ctrl_Traj, Contact_Force_Traj;
   Ctrl_Traj = dlib::zeros_matrix<double>(Control_len, Grids);
   Contact_Force_Traj = dlib::zeros_matrix<double>(Contact_Force_len, Grids);
-  Contact_Force_Mid_Traj = dlib::zeros_matrix<double>(Contact_Force_len, Grids - 1);
 
   // Then there are actually three methods to initialize the seed for optimizations
   // The difference lies in the way that the state is treated.
@@ -2216,13 +2195,41 @@ std::vector<double> Seed_Guess_Gene(Tree_Node &Node_i, Tree_Node &Node_i_child)
   // Method 2: Each whole state is chosen in a cubic spline.    Then the acceleration is found by evaluating this cubic spline at each knot pointd.
   // Method 3: The position is chosen in a quadratic fashion while the velocity is a linear function. Then the acceleration is a constant value which match (v0 - vN)/T_tot
 
+  // Method 4: The position is chosen in  a quadratic fashion while there are some manifold projection has to be conducted to ensure the initial point and the end point on the manifold
+
   // No matter what method is chosen, the output from this step are four things: States/Accelerations at grids and States/Accelerations at mid-points
 
-  State_Traj_Interpolater(Init_Config, Seed_Config, StateNDot_Traj, Acc_Traj, StateNdot_Mid_Traj, Acc_Mid_Traj,1);
+  // State_Traj_Interpolater(Init_Config, Seed_Config, StateNDot_Traj, Acc_Traj, StateNdot_Mid_Traj, Acc_Mid_Traj,1);
   // State_Traj_Interpolater(Init_Config, Seed_Config, StateNDot_Traj, Acc_Traj, StateNdot_Mid_Traj, Acc_Mid_Traj,2);
   // State_Traj_Interpolater(Init_Config, Seed_Config, StateNDot_Traj, Acc_Traj, StateNdot_Mid_Traj, Acc_Mid_Traj,3);
 
-  // Second is to initialize: Control, Contact Force and Contact_Force_Mid
+  // Here the contact sigma has to be specified hreer the sigma should match the previuos sigma idea
+
+  int Opt_Type_Flag = Sigma_TransNGoal(sigma_i, sigma_i_child);
+  if(Opt_Type_Flag == 1)
+  {
+    sigma = sigma_i_child;
+  }
+  else
+  {
+    sigma = sigma_i;
+  }
+
+  // Sigma_Act_Manifold substitution
+  Sigma_Act_Manifold[0] = sigma[0];
+  Sigma_Act_Manifold[1] = sigma[0];
+  Sigma_Act_Manifold[2] = sigma[1];
+  Sigma_Act_Manifold[3] = sigma[1];
+  Sigma_Act_Manifold[4] = sigma[2];
+  Sigma_Act_Manifold[5] = sigma[3];
+
+  State_Traj_Interpolater_Manifold(Init_Config, sigma, StateNDot_Traj, Acc_Traj, StateNdot_Mid_Traj, Acc_Mid_Traj);
+
+  cout<<StateNDot_Traj<<endl;
+  cout<<Acc_Traj<<endl;
+
+
+  // Second is to initialize: Control, and Contact Force
   // Since the acceleration is directly given in advance. This makes the initialization easier.
 
   dlib::matrix<double> State_k, Acc_k, Lamda_k, u_k;
@@ -2251,46 +2258,15 @@ std::vector<double> Seed_Guess_Gene(Tree_Node &Node_i, Tree_Node &Node_i_child)
     }
   }
 
-  dlib::matrix<double> State_Mid, Acc_Mid, Lamda_Mid, u_Mid;
-  Lamda_Mid = dlib::zeros_matrix<double>(12,1);
-  u_Mid = dlib::zeros_matrix<double>(10,1);
-  dlib::matrix<double> u_Front = u_Mid;
-  dlib::matrix<double> u_Back = u_Mid;
-
-  // Contact Force Mid Traj
-
-  for (int i = 0; i < Grids - 1; i++)
-  {
-    u_Front = dlib::colm(Ctrl_Traj, i);
-
-    u_Back = dlib::colm(Ctrl_Traj, i+1);
-
-    u_Mid = 0.5 *u_Front + 0.5 * u_Back;
-
-    State_Mid = dlib::colm(StateNdot_Mid_Traj, i);
-
-    Acc_Mid = dlib::colm(Acc_Mid_Traj, i);
-
-    Lamda_Mid = StateNAccNTorque2ContactForce(State_Mid, Acc_Mid, u_Mid);
-
-    // This is the evaluation of the contact force
-    for (int j = 0; j < 12; j++)
-    {
-      Contact_Force_Mid_Traj(j,i) = Lamda_Mid(j);
-    }
-  }
-
   // The final task is to pile them into a single vector
   std::vector<double> Opt_Seed;
   Opt_Seed.push_back(T * (Grids - 1));
-  Opt_Seed_Zip(Opt_Seed, StateNDot_Traj, Ctrl_Traj, Contact_Force_Traj, Contact_Force_Mid_Traj);
+  Opt_Seed_Zip(Opt_Seed, StateNDot_Traj, Ctrl_Traj, Contact_Force_Traj);
 
-  // cout<<StateNDot_Traj<<endl;				cout<<Ctrl_Traj<<endl;
-  // cout<<Contact_Force_Traj<<endl;    cout<<Contact_Force_Mid_Traj<<endl;
+  // cout<<StateNDot_Traj<<endl;				cout<<Ctrl_Traj<<endl;        cout<<Contact_Force_Traj<<endl;
 
   return Opt_Seed;
 }
-
 void StateNAcc2ContactForceNTorque(dlib::matrix<double> &State_k, dlib::matrix<double> &Acc_k, dlib::matrix<double> &Lamda_k, dlib::matrix<double> &u_k)
 {
   // This function is sued to initialize the contact force and torque vector based on the information of State and Acc
@@ -2313,25 +2289,290 @@ void StateNAcc2ContactForceNTorque(dlib::matrix<double> &State_k, dlib::matrix<d
     }
   }
 }
-
 dlib::matrix<double> StateNAccNTorque2ContactForce(dlib::matrix<double> &State_k, dlib::matrix<double> &Acc_k, dlib::matrix<double> &u_k)
 {
   // This function is used to initialize the contact force
   Robot_StateNDot Robot_StateNDot_k = DlibRobotstate2StateNDot(State_k);
+
   dlib::matrix<double> D_q_k, B_q_k, C_q_qdot_k, Jac_Full_k;
+
   Dynamics_Matrices(Robot_StateNDot_k, D_q_k, B_q_k, C_q_qdot_k, Jac_Full_k);
 
   dlib::matrix<double> B_LHS = D_q_k * Acc_k + C_q_qdot_k - B_q_k * u_k;
 
   dlib::matrix<double> Lamda_k = dlib::pinv(Jac_Full_k) * B_LHS;
+
   return Lamda_k;
 }
 
+void Seed_Config_Manifold_Pr_ObjNConstraint(std::vector<double> &Opt_Seed, std::vector<double> &ObjNConstraint_Val, std::vector<double> &ObjNConstraint_Type)
+{
+  // This function is used to formulate the constraint for the optimization problem
+
+  dlib::matrix<int> End_Effector_Obs_Index_Matrix = dlib::ones_matrix<int>(6, Grids);
+
+  dlib::matrix<double> temp_matrix;       std::vector<double> Seed_Config_on_Manifold;
+
+  for (int i = 0; i < 13; i++)
+  {
+    Seed_Config_on_Manifold.push_back(Opt_Seed[i]);
+  }
+  // Pote_Robotstate is a global variable
+
+  // Pure feasibility test with the requirement to minimize the difference between the Pote and Seed
+
+  std::vector<double> Robostate_offset = Vec_Minus(Pote_Robotstate, Seed_Config_on_Manifold);
+  double State_Diff = 0;
+  for (int i = 0; i < Robostate_offset.size(); i++)
+  {
+    State_Diff = State_Diff + Robostate_offset[i] * Robostate_offset[i];
+  }
+
+  ObjNConstraint_Val.push_back(State_Diff);
+  ObjNConstraint_Type.push_back(1);
+
+  // Second is to make sure that Seed_Config_on_Manifold is on the manifold
+
+  Robot_StateNDot Robot_StateNDot_Manifold = StateVec2StateNDot(Seed_Config_on_Manifold);
+  dlib::matrix<double,12,1> End_Effector_Pos, End_Effector_Vel;
+  dlib::matrix<double,6,1> End_Effector_Dist; std::vector<int> End_Effector_Obs(6);
+
+  End_Effector_PosNVel(Robot_StateNDot_Manifold, End_Effector_Pos, End_Effector_Vel);
+  End_Effector_Obs_Dist_Fn(End_Effector_Pos, End_Effector_Dist, End_Effector_Obs);
+
+  // Here the End_Effector_Dist should multiply with the active sigma matrix
+  for (int i = 0; i < 6; i++)
+  {
+    ObjNConstraint_Val.push_back(Sigma_Act_Manifold[i] * End_Effector_Dist(i));
+    ObjNConstraint_Type.push_back(0);
+  }
+  return;
+}
+
+int Seed_Config_Manifold_Pr_(integer    *Status, integer *n,    doublereal x[],
+     integer    *needF,  integer *neF,  doublereal F[],
+     integer    *needG,  integer *neG,  doublereal G[],
+     char       *cu,     integer *lencu,
+	 integer    iu[],    integer *leniu,
+	 doublereal ru[],    integer *lenru )
+{
+  std::vector<double> Opt_Seed, ObjNConstraint_Val, ObjNConstraint_Type;
+
+  for (int i = 0; i < *n; i++)
+  {
+    Opt_Seed.push_back(x[i]);
+    // cout<<x[i]<<endl;
+  }
+
+  Seed_Config_Manifold_Pr_ObjNConstraint(Opt_Seed, ObjNConstraint_Val, ObjNConstraint_Type);
+
+  for (int i = 0; i < ObjNConstraint_Val.size(); i++)
+  {
+    F[i] = ObjNConstraint_Val[i];
+  }
+    return 0;
+  }
+
+void State_Traj_Interpolater_Manifold(std::vector<double>&Init_Robotstate, std::vector<double> &sigma, dlib::matrix<double> &StateNDot_Traj, dlib::matrix<double> &Acc_Traj, dlib::matrix<double> &StateNdot_Mid_Traj, dlib::matrix<double> &Acc_Mid_Traj)
+{
+  // This method is based on a parabola assumption of the state spline while the initial point and the end point should lie on the manifold on pos and velocity
+
+  double Pos_k_Init, Pos_k_End, Vel_k_Init, Acc_k;             // The Position, Velocity and Acceleration for variable k
+
+  // One thing needs to be noticed is that in this case, the final state does not need to be known in advance since we will directly make use of the T_tot to compute the final state
+  // Here in this initialization of optimization seed, the acceleration is determined by the h_k inst4ad of the whole h_k
+
+  for (int i = 0; i < 13; i++)
+  {
+    Pos_k_Init = Init_Robotstate[i];
+    Vel_k_Init = Init_Robotstate[i+13];
+    Acc_k = Vel_k_Init/h_k;                  // Since the assumption is that the acceleration remains constant.
+    // Then it is the computation of the final robot configuration
+    Pos_k_End = Pos_k_Init + Vel_k_Init * h_k + 1/2 * Acc_k * h_k * h_k;
+    Pote_Robotstate[i] = Pos_k_End;           // The parabola state at the end
+    Pote_Robotstate[i+13] = 0;                // The robot velocity at the end is set to 0 for the sake of kinetic energy minimization
+  }
+
+  // However, it is known in adavance that this Pote_Robotstate will not lie on the manifold so the idea is to enforce this contact constraint
+  // This projection can be conducted by an orthogonal projection in the direction of the transpose of the Jacobian matrix
+
+  // It is very likely that Pote_Robotstate is not on the manifold so the next job is to project this point back into the manifold.
+
+  std::vector<double> Jac_Act_Index = Full_Row_Rank_Index(sigma);
+
+  const int Jac_Row_Number = Jac_Act_Index.size();
+
+  dlib::matrix<double> Jac_Act = dlib::zeros_matrix<double>(Jac_Row_Number,13);
+
+  Robot_StateNDot Pote_RobotstateNDot = StateVec2StateNDot(Pote_Robotstate);
+
+  dlib::matrix<double> Jac_Full = Jac_Full_fn(Pote_RobotstateNDot);
+
+  for (int j = 0; j < Jac_Row_Number; j++)
+  {
+    for (int k = 0; k < 13; k++)
+    {
+      Jac_Act(j,k) = Jac_Full(Jac_Act_Index[j],k);
+    }
+  }
+
+  Jac_Act_Trans_Manifold = dlib::trans(Jac_Act);
+
+  // Here we have the descent direction! Then the job is to find the projection and the value. What we would like to do is to conduct an optimization to find the seed config
+
+  snoptProblem Seed_Config_Manifold_Pr;                     // This is the name of the Optimization problem
+  // Allocate and initialize
+  std:vector<double> ObjNConstraint_Val, ObjNConstraint_Type;
+
+  integer n = 13;
+
+  // This is time to initialize the guess for this seed configuration manifold optimization problem
+  std::vector<double> seed_config_opt_var(n);
+  for (int i = 0; i < n; i++)
+  {
+    seed_config_opt_var[i] = Pote_Robotstate[i];
+  }
+
+  Seed_Config_Manifold_Pr_ObjNConstraint(seed_config_opt_var, ObjNConstraint_Val, ObjNConstraint_Type);
+
+  integer neF = ObjNConstraint_Val.size();     			// 1 objective function
+  integer lenA  =  n * neF;                         // This is the number of nonzero elements in the linear part A    F(x) = f(x)+Ax
+
+  integer *iAfun = new integer[lenA];               integer *jAvar = new integer[lenA];				    doublereal *A  = new doublereal[lenA];
+
+  integer lenG   = lenA;							              integer *iGfun = new integer[lenG];				    integer *jGvar = new integer[lenG];
+
+  doublereal *x      = new doublereal[n];			      doublereal *xlow   = new doublereal[n];				doublereal *xupp   = new doublereal[n];
+  doublereal *xmul   = new doublereal[n];			      integer    *xstate = new    integer[n];
+
+  doublereal *F      = new doublereal[neF];		      doublereal *Flow   = new doublereal[neF];			doublereal *Fupp   = new doublereal[neF];
+  doublereal *Fmul   = new doublereal[neF];		      integer    *Fstate = new integer[neF];
+
+  integer nxnames = 1;							integer nFnames = 1;						char *xnames = new char[nxnames*8];						char *Fnames = new char[nFnames*8];
+
+  integer    ObjRow = 0;							doublereal ObjAdd = 0;
+
+  // Set the upper and lower bounds.
+  for (int i = 0; i < n; i++) {
+    xlow[i] = xlow_vec(i);
+    xupp[i] = xupp_vec(i);
+    xstate[i] = 0.0;
+    x[i] = seed_config_opt_var[i];  	// Initial guess
+  }
+
+  for(int i = 0; i<neF; i++)
+  {
+    // The lower bound is the same
+    Flow[i] = 0.0;
+    if(ObjNConstraint_Type[i]>0)	// Inequality constraint
+    {
+      Fupp[i] = Inf;
+    }
+    else
+    {
+      Fupp[i] = 0.0;
+    }
+  }
+
+  // Load the data for ToyProb ...
+  Seed_Config_Manifold_Pr.setPrintFile  ( "Seed_Config_Manifold_Pr.out" );
+  Seed_Config_Manifold_Pr.setProblemSize( n, neF );
+  Seed_Config_Manifold_Pr.setObjective  ( ObjRow, ObjAdd );
+  Seed_Config_Manifold_Pr.setA          ( lenA, iAfun, jAvar, A );
+  Seed_Config_Manifold_Pr.setG          ( lenG, iGfun, jGvar );
+  Seed_Config_Manifold_Pr.setX          ( x, xlow, xupp, xmul, xstate );
+  Seed_Config_Manifold_Pr.setF          ( F, Flow, Fupp, Fmul, Fstate );
+  Seed_Config_Manifold_Pr.setXNames     ( xnames, nxnames );
+  Seed_Config_Manifold_Pr.setFNames     ( Fnames, nFnames );
+  Seed_Config_Manifold_Pr.setProbName   ( "Seed_Config_Manifold_Pr" );
+  Seed_Config_Manifold_Pr.setUserFun    ( Seed_Config_Manifold_Pr_);
+  // snopta will compute the Jacobian by finite-differences.
+  // The user has the option of calling  snJac  to define the
+  // coordinate arrays (iAfun,jAvar,A) and (iGfun, jGvar).
+  Seed_Config_Manifold_Pr.computeJac    ();
+  Seed_Config_Manifold_Pr.setIntParameter( "Derivative option", 0 );
+  Seed_Config_Manifold_Pr.setIntParameter( "Major print level", 0 );
+  Seed_Config_Manifold_Pr.setIntParameter( "Minor print level", 0 );
+  integer Cold = 0, Basis = 1, Warm = 2;
+  Seed_Config_Manifold_Pr.solve( Cold );
+
+  // Take the value out from x
+  for (int i = 0; i < 13; i++)
+  {
+    Pote_Robotstate[i] = x[i];
+  }
+
+  // cin.get();
+  Robot_StateNDot Init_Opt_vec(Pote_Robotstate);
+  Robot_Plot_fn(Init_Opt_vec);
+
+  delete []iAfun;  delete []jAvar;  delete []A;
+  delete []iGfun;  delete []jGvar;
+
+  delete []x;      delete []xlow;   delete []xupp;
+  delete []xmul;   delete []xstate;
+
+  delete []F;		   delete []Flow;	  delete []Fupp;
+  delete []Fmul;	 delete []Fstate;
+
+  delete []xnames; delete []Fnames;
+
+  // Here the seed_configuration have been achieved to lie on the constraint manifold
+
+  std::vector<double> State_Traj_Coeff_i;
+
+  double Pos_i_Init, Pos_i_Goal, Vel_i_Init;
+
+  for (int i = 0; i < 13; i++)
+  {
+    Pos_i_Init = Init_Robotstate[i];				Pos_i_Goal = Pote_Robotstate[i];         Vel_i_Init = Init_Robotstate[i+13];
+
+    State_Traj_Coeff_i = QuadraticSpline_Coeff_fn(h_k, Pos_i_Init, Pos_i_Goal, Vel_i_Init); // 3 by 1 vector: a, b, c
+
+    // After this step, we hacve the cubic spline for the whole trajectories. Then it is time to discretize them
+    // for (int qq = 0; qq < 3; qq++)
+    // {
+    //   cout<<State_Traj_Coeff_i[qq]<<endl;
+    // }
+
+    double ds = 1.0/(Grids * 1.0 - 1.0), s_j;
+
+    for (int j = 0; j < Grids; j++)
+    {
+      s_j = ds * (j);
+
+      StateNDot_Traj(i, j) = QuadraticSpline_Eval(h_k, State_Traj_Coeff_i, s_j, 'P');
+
+      StateNDot_Traj(i + 13,j) = QuadraticSpline_Eval(h_k, State_Traj_Coeff_i, s_j, 'V');
+
+      Acc_Traj(i, j) = QuadraticSpline_Eval(h_k, State_Traj_Coeff_i, s_j, 'A');
+
+      // Now it is the information at the middle point
+      if(j < Grids-1)
+      {
+        double s_j_mid = s_j + 0.5 * ds;
+
+        StateNdot_Mid_Traj(i, j) = QuadraticSpline_Eval(h_k, State_Traj_Coeff_i, s_j_mid, 'P');
+
+        StateNdot_Mid_Traj(i, j+13) = QuadraticSpline_Eval(h_k, State_Traj_Coeff_i, s_j_mid, 'V');
+
+        Acc_Mid_Traj(i, j) = QuadraticSpline_Eval(h_k, State_Traj_Coeff_i, s_j_mid, 'A');
+      }
+    }
+  }
+
+  cout<<StateNDot_Traj<<endl;
+  cout<<Acc_Traj<<endl;
+
+
+}
 
 void State_Traj_Interpolater(std::vector<double>&Init_Robotstate, std::vector<double>&End_Robotstate, dlib::matrix<double> &StateNDot_Traj, dlib::matrix<double> &Acc_Traj, dlib::matrix<double> &StateNdot_Mid_Traj, dlib::matrix<double> &Acc_Mid_Traj, int Choice_Flag)
 {
   // This function is used to interpolate the State Trajectory and get ready the acceleration
+
   // Based on the different methods, there are three possible ways to address these problem
+
   if(Choice_Flag == 1)
   {
     // Method 1: The whole states are chosen in a linear fashion. Then the acceleration is found by treating each segment between grids to be cubic spline.
@@ -2516,19 +2757,17 @@ void CubicSpline_Interpolater(dlib::matrix<double> &StateNDot_Traj, dlib::matrix
   }
 }
 
-void Opt_Seed_Unzip(std::vector<double> &Opt_Seed, double &T_tot, dlib::matrix<double> & StateNDot_Traj, dlib::matrix<double> & Ctrl_Traj, dlib::matrix<double> & Contact_Force_Traj, dlib::matrix<double> & Contact_Force_Mid_Traj)
+void Opt_Seed_Unzip(std::vector<double> &Opt_Seed, double &T_tot, dlib::matrix<double> & StateNDot_Traj, dlib::matrix<double> & Ctrl_Traj, dlib::matrix<double> & Contact_Force_Traj)
 {
   const int NumOfStateNDot_Traj = 26;
   const int NumOfCtrl_Traj = 10;
   const int NumOfContactForce_Traj = 12;
-  const int NumOfContactForceMid_Traj = 12;
 
   T_tot = Opt_Seed[0];			int Opt_Seed_Index = 1;
 
   StateNDot_Traj = dlib::zeros_matrix<double>(NumOfStateNDot_Traj, Grids);
   Ctrl_Traj = dlib::zeros_matrix<double>(NumOfCtrl_Traj, Grids);
   Contact_Force_Traj = dlib::zeros_matrix<double>(NumOfContactForce_Traj, Grids);
-  Contact_Force_Mid_Traj = dlib::zeros_matrix<double>(NumOfContactForceMid_Traj, Grids - 1);      // since the mid trajectory lies between the robot grids so its number is N-1
 
   // 1. Retrieve the StateNDot_Traj matrix
   for (int i = 0; i < Grids; i++)
@@ -2560,21 +2799,10 @@ void Opt_Seed_Unzip(std::vector<double> &Opt_Seed, double &T_tot, dlib::matrix<d
     }
   }
   // cout<<Contact_Force_Traj<<endl;
-
-  // 4. Retrieve the contact force mid matrix
-  for (int i = 0; i < Grids-1; i++)
-  {
-    for (int j = 0; j < NumOfContactForceMid_Traj; j++)
-    {
-      Contact_Force_Mid_Traj(j,i) = Opt_Seed[Opt_Seed_Index];
-      Opt_Seed_Index = Opt_Seed_Index + 1;
-    }
-  }
-  // cout<<Contact_Force_Mid_Traj<<endl;
   return ;
 }
 
-void Opt_Seed_Zip(std::vector<double> &Opt_Seed, dlib::matrix<double> & StateNDot_Traj, dlib::matrix<double> & Ctrl_Traj, dlib::matrix<double> & Contact_Force_Traj, dlib::matrix<double> & Contact_Force_Mid_Traj)
+void Opt_Seed_Zip(std::vector<double> &Opt_Seed, dlib::matrix<double> & StateNDot_Traj, dlib::matrix<double> & Ctrl_Traj, dlib::matrix<double> & Contact_Force_Traj)
 {
   // This function is used to stack the coefficient matrices into a column vector
   for (int i = 0; i < StateNDot_Traj.nc(); i++)
@@ -2596,13 +2824,6 @@ void Opt_Seed_Zip(std::vector<double> &Opt_Seed, dlib::matrix<double> & StateNDo
     for (int j = 0; j < Contact_Force_Traj.nr(); j++)
     {
       Opt_Seed.push_back(Contact_Force_Traj(j,i));
-    }
-  }
-  for (int i = 0; i < Contact_Force_Mid_Traj.nc(); i++)
-  {
-    for (int j = 0; j < Contact_Force_Mid_Traj.nr(); j++)
-    {
-      Opt_Seed.push_back(Contact_Force_Mid_Traj(j,i));
     }
   }
 }
@@ -2688,13 +2909,17 @@ int Seed_Conf_Optimization_Pr_fn_(integer    *Status, integer *n,    doublereal 
 	 doublereal ru[],    integer *lenru )
 {
   std::vector<double> Opt_Seed, ObjNConstraint_Val, ObjNConstraint_Type;
-for (int i = 0; i < 26; i++){
-	Opt_Seed.push_back(x[i]);}
-Seed_Conf_Optimization_ObjNConstraint(Opt_Seed, ObjNConstraint_Val, ObjNConstraint_Type);
-for (int i = 0; i < ObjNConstraint_Val.size(); i++){
-	F[i] = ObjNConstraint_Val[i];}
-return 0;
-}
+  for (int i = 0; i < 26; i++)
+  {
+    Opt_Seed.push_back(x[i]);
+  }
+  Seed_Conf_Optimization_ObjNConstraint(Opt_Seed, ObjNConstraint_Val, ObjNConstraint_Type);
+  for (int i = 0; i < ObjNConstraint_Val.size(); i++)
+  {
+    F[i] = ObjNConstraint_Val[i];
+  }
+    return 0;
+  }
 
 void Seed_Conf_Optimization_ObjNConstraint(std::vector<double> &Opt_Seed, std::vector<double> &ObjNConstraint_Val, std::vector<double> &ObjNConstraint_Type)
 {

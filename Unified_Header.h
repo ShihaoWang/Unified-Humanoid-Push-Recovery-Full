@@ -3,7 +3,7 @@
 #include <vector>
 #include <math.h>
 #include <string.h>
-#include <dlib/matrix.h>
+#include <dlib/matrix.h> 
 
 #define _USE_MATH_DEFINES
 #include <cmath>
@@ -98,7 +98,7 @@ extern std::vector<Tree_Node_Ptr> All_Nodes, Children_Nodes, Frontier_Nodes;
  dlib::matrix<double> B_q_fn();
  dlib::matrix<double> C_q_qdot_fn(const Robot_StateNDot &Robot_StateNDot_i);
  dlib::matrix<double> Jac_Full_fn(const Robot_StateNDot &Robot_StateNDot_i);
- dlib::matrix<double> Jacdot_qdot_fn(const Robot_StateNDot &Robot_StateNDot_i);
+ // dlib::matrix<double> Jacdot_qdot_fn(const Robot_StateNDot &Robot_StateNDot_i);
  std::vector<double> Ang_Pos_fn(const Robot_StateNDot &Robot_StateNDot_i, const char* s);
  std::vector<double> Ang_Vel_fn(const Robot_StateNDot &Robot_StateNDot_i, const char* s);
  double Kinetic_Energy_fn(Robot_StateNDot &Robot_StateNDot_i);
@@ -110,7 +110,7 @@ extern std::vector<Tree_Node_Ptr> All_Nodes, Children_Nodes, Frontier_Nodes;
  void Contact_Force_Feasibility_fn(dlib::matrix<double> &Contact_Force_k, dlib::matrix<int> &End_Effector_Obs_k, std::vector<double> &ObjNConstraint_Val, std::vector<double> &ObjNConstraint_Type);
  dlib::matrix<double> Contact_Force_Complem_Matrix_fn(std::vector<double> &sigma);
  dlib::matrix<double> Contact_Status_fn(std::vector<double> &sigma_i);
- dlib::matrix<double> Contact_Acc_Constraint(dlib::matrix<double> &Robotstate, dlib::matrix<double> &Robotstatedot, const dlib::matrix<double> &Sigma_Matrix);
+ // dlib::matrix<double> Contact_Acc_Constraint(dlib::matrix<double> &Robotstate, dlib::matrix<double> &Robotstatedot, const dlib::matrix<double> &Sigma_Matrix);
  dlib::matrix<double> Diag_Matrix_fn(std::vector<double> &diag_vec);
  void Dynamics_Matrices(const Robot_StateNDot &Node_StateNDot, dlib::matrix<double> &D_q, dlib::matrix<double> &B_q, dlib::matrix<double> &C_q_qdot, dlib::matrix<double> &Jac_Full);
  dlib::matrix<double> State_Ctrl_CF_2_Statedot(dlib::matrix<double> &Robotstate_k, dlib::matrix<double> &Contact_Force_k, dlib::matrix<double> &Control_k);
@@ -130,8 +130,8 @@ extern std::vector<Tree_Node_Ptr> All_Nodes, Children_Nodes, Frontier_Nodes;
  std::vector<double> Opt_Soln_Load();
 
  std::vector<double> Seed_Guess_Gene(Tree_Node &Node_i, Tree_Node &Node_i_child);
- void Opt_Seed_Unzip(std::vector<double> &Opt_Seed, double &T_tot, dlib::matrix<double> & StateNDot_Traj, dlib::matrix<double> & Ctrl_Traj, dlib::matrix<double> & Contact_Force_Traj, dlib::matrix<double> & Contact_Force_Mid_Traj);
- void Opt_Seed_Zip(std::vector<double> &Opt_Seed, dlib::matrix<double> & StateNDot_Traj, dlib::matrix<double> & Ctrl_Traj, dlib::matrix<double> & Contact_Force_Traj, dlib::matrix<double> & Contact_Force_Mid_Traj);
+ void Opt_Seed_Unzip(std::vector<double> &Opt_Seed, double &T_tot, dlib::matrix<double> & StateNDot_Traj, dlib::matrix<double> & Ctrl_Traj, dlib::matrix<double> & Contact_Force_Traj);
+ void Opt_Seed_Zip(std::vector<double> &Opt_Seed, dlib::matrix<double> & StateNDot_Traj, dlib::matrix<double> & Ctrl_Traj, dlib::matrix<double> & Contact_Force_Traj);
  std::vector<double> Seed_Guess_Gene_Robotstate(Tree_Node &Node_i, Tree_Node &Node_i_child);
  void Seed_Conf_Optimization_ObjNConstraint(std::vector<double> &Opt_Seed, std::vector<double> &ObjNConstraint_Val, std::vector<double> &ObjNConstraint_Type);
  std::vector<double> Time_Seed_Queue_fn(double Time_Interval, int Total_Num);
@@ -143,7 +143,6 @@ extern std::vector<Tree_Node_Ptr> All_Nodes, Children_Nodes, Frontier_Nodes;
  dlib::matrix<double> Eqn_Maint_Matrix_fn(std::vector<double> &sigma_i, std::vector<double> &sigma_i_child);
  std::vector<double> CubicSpline_Coeff_fn(double T, double x_init, double x_end, double xdot_init, double xdot_end);
  dlib::matrix<double> Dynamics_RHS_Matrix_fn(dlib::matrix<double> &Jac_Full, dlib::matrix<double> &B_q);
- void StateNAcc2ContactForceNTorque(dlib::matrix<double> &State_k, dlib::matrix<double> &Acc_k, dlib::matrix<double> &Lamda_k, dlib::matrix<double> &u_k);
  dlib::matrix<double> StateNAccNTorque2ContactForce(dlib::matrix<double> &State_k, dlib::matrix<double> &Acc_k, dlib::matrix<double> &u_k);
  void State_Traj_Interpolater(std::vector<double>&Init_Robotstate, std::vector<double>&End_Robotstate, dlib::matrix<double> &StateNDot_Traj, dlib::matrix<double> &Acc_Traj, dlib::matrix<double> &StateNdot_Mid_Traj, dlib::matrix<double> &Acc_Mid_Traj, int Choice_Flag);
 
@@ -152,3 +151,5 @@ extern std::vector<Tree_Node_Ptr> All_Nodes, Children_Nodes, Frontier_Nodes;
  std::vector<double> QuadraticSpline_Coeff_fn(double T, double x_init, double x_end, double xdot_init);
  double QuadraticSpline_Eval(double T, std::vector<double> & State_Traj_Coeff, double s, char name);
  int Sigma_Change(std::vector<double> &sigma_i, std::vector<double> &sigma_i_child);
+ void StateNAcc2ContactForceNTorque(dlib::matrix<double> &State_k, dlib::matrix<double> &Acc_k, dlib::matrix<double> &Lamda_k, dlib::matrix<double> &u_k);
+ void State_Traj_Interpolater_Manifold(std::vector<double>&Init_Robotstate, std::vector<double> &sigma, dlib::matrix<double> &StateNDot_Traj, dlib::matrix<double> &Acc_Traj, dlib::matrix<double> &StateNdot_Mid_Traj, dlib::matrix<double> &Acc_Mid_Traj);
